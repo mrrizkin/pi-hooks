@@ -1,20 +1,33 @@
-# pi-extensions
+# pi-hooks
 
-Minimal reference extensions for [`pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent).
+A collection of extensions for [`pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent).
+
+This repository is a fork of [`prateekmedia/pi-hooks`](https://github.com/prateekmedia/pi-hooks), maintained at [`mrrizkin/pi-hooks`](https://github.com/mrrizkin/pi-hooks).
+
+- **Fork:** https://github.com/mrrizkin/pi-hooks
+- **Upstream:** https://github.com/prateekmedia/pi-hooks
 
 ## Quick Setup
 
-Install the package:
+Install this fork from GitHub:
 ```bash
-pi install npm:pi-hooks
+# Remove the upstream/npm package first if it is already installed.
+pi remove npm:pi-hooks
+pi install git:github.com/mrrizkin/pi-hooks
 pi config  # enable/disable extensions
 ```
 
 Dependencies are installed automatically during `pi install`.
 
-To pull updates later:
+To pull updates from this fork later:
 ```bash
-pi update git:github.com/prateekmedia/pi-hooks
+pi update git:github.com/mrrizkin/pi-hooks
+```
+
+For local development, install the checkout directly instead:
+```bash
+pi remove npm:pi-hooks
+pi install /absolute/path/to/pi-hooks
 ```
 
 ## Included Extensions
@@ -108,13 +121,15 @@ Shows the average output tokens per second (TPS) in the footer status line.
 
 ## Usage
 
-1. Install the package and enable extensions:
+1. Install this fork and enable extensions:
    ```bash
-   pi install npm:pi-hooks
+   pi install git:github.com/mrrizkin/pi-hooks
    pi config
    ```
 
 2. See inline comments in each extension for configuration options.
+
+When switching from the upstream/npm package, remove `npm:pi-hooks` first and install this fork so both packages are not loaded at the same time.
 
 ## Testing
 
