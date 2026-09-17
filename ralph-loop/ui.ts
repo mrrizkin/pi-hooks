@@ -279,6 +279,7 @@ export function buildLoopViewerLineSource(details: any, showThinking = false): R
 	addLine(blocks, `Status: ${details?.status || "unknown"}`);
 	addLine(blocks, `Stop: ${details?.stopReason || "(running)"}`);
 	addLine(blocks, `Condition: ${details?.conditionCommand || "(none)"}`);
+	if (details?.conditionTimeoutMs) addLine(blocks, `Condition timeout: ${details.conditionTimeoutMs}ms`);
 	const iterations = Array.isArray(details?.iterations) ? details.iterations : [];
 	addLine(blocks, `Iterations: ${iterations.length}`);
 

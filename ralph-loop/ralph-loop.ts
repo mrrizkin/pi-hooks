@@ -131,7 +131,8 @@ export interface RalphLoopDetails {
 	conditionSource: "provided" | "inferred" | "default";
 	maxIterations: number | null;
 	sleepMs: number;
-	lastCondition: { stdout: string; stderr: string; exitCode: number };
+	conditionTimeoutMs: number;
+	lastCondition: { stdout: string; stderr: string; exitCode: number; killed?: boolean; timedOut?: boolean };
 	prompt: LoopPromptInfo;
 	steering: string[];
 	followUps: string[];
@@ -758,8 +759,11 @@ const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
 	default: "user",
 });
 
-const DEFAULT_LOOP_MAX_ITERATIONS = Number.MAX_SAFE_INTEGER;
-const DEFAULT_LOOP_SLEEP_MS = 1000;
+export const DEFAULT_LOOP_MAX_ITERATIONS = 10;
+export const MAX_LOOP_ITERATIONS = 100;
+export const DEFAULT_CONDITION_TIMEOUT_MS = 30_000;
+export const MAX_CONDITION_TIMEOUT_MS = 300_000;
+export const DEFAULT_LOOP_SLEEP_MS = 1000;
 
 const LoopParams = Type.Object({
 	conditionCommand: Type.Optional(
@@ -768,8 +772,15 @@ const LoopParams = Type.Object({
 				"Bash command used for looping; continue while stdout is 'true' (case-insensitive). If omitted, inferred from task or defaults to 'echo true'.",
 		}),
 	),
-	maxIterations: Type.Optional(Type.Number({ description: "Max iterations (optional)." })),
+	maxIterations: Type.Optional(
+		Type.Number({ description: `Max iterations (default ${DEFAULT_LOOP_MAX_ITERATIONS}, maximum ${MAX_LOOP_ITERATIONS}).` }),
+	),
 	sleepMs: Type.Optional(Type.Number({ description: `Sleep between iterations in ms (default ${DEFAULT_LOOP_SLEEP_MS}).` })),
+	conditionTimeoutMs: Type.Optional(
+		Type.Number({
+			description: `Maximum time for each condition command in ms (default ${DEFAULT_CONDITION_TIMEOUT_MS}, maximum ${MAX_CONDITION_TIMEOUT_MS}).`,
+		}),
+	),
 	agent: Type.Optional(Type.String({ description: "Name of the agent to invoke (for single mode)" })),
 	task: Type.Optional(Type.String({ description: "Task to delegate (for single mode)" })),
 	chain: Type.Optional(Type.Array(ChainItem, { description: "Array of {agent, task} for sequential execution" })),
@@ -966,12 +977,24 @@ async function executeSubagentOnce(
 	};
 }
 
-function parseLoopNumber(value: string | null, fallback: number, allowZero = false): number | null {
-	const trimmed = value?.trim();
-	if (!trimmed) return fallback;
-	const parsed = Number.parseInt(trimmed, 10);
-	if (!Number.isFinite(parsed)) return null;
-	if (parsed < 0) return null;
+export function parseLoopNumber(
+	value: unknown,
+	fallback: number,
+	allowZero = false,
+	maximum = Number.MAX_SAFE_INTEGER,
+): number | null {
+	if (value === undefined || value === null || (typeof value === "string" && value.trim() === "")) return fallback;
+
+	let parsed: number;
+	if (typeof value === "number") {
+		parsed = value;
+	} else if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+		parsed = Number(value.trim());
+	} else {
+		return null;
+	}
+
+	if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > maximum) return null;
 	if (!allowZero && parsed === 0) return null;
 	return parsed;
 }
@@ -991,20 +1014,33 @@ async function sleep(delayMs: number, signal?: AbortSignal): Promise<void> {
 	});
 }
 
-async function checkLoopCondition(
+export async function checkLoopCondition(
 	pi: ExtensionAPI,
 	command: string,
 	cwd: string,
 	signal?: AbortSignal,
-): Promise<{ shouldContinue: boolean; stdout: string; stderr: string; exitCode: number }> {
-	const result = await pi.exec("bash", ["-lc", command], { cwd, signal });
+	conditionTimeoutMs = DEFAULT_CONDITION_TIMEOUT_MS,
+): Promise<{
+	shouldContinue: boolean;
+	stdout: string;
+	stderr: string;
+	exitCode: number;
+	killed: boolean;
+	timedOut: boolean;
+}> {
+	const result = await pi.exec("bash", ["-lc", command], { cwd, signal, timeout: conditionTimeoutMs });
 	const stdout = (result.stdout || "").trim();
-	const shouldContinue = stdout.toLowerCase() === "true";
+	const killed = Boolean(result.killed);
+	const timedOut = killed && !signal?.aborted;
+	const exitCode = result.code ?? (killed ? 1 : 0);
+	const shouldContinue = !timedOut && exitCode === 0 && stdout.toLowerCase() === "true";
 	return {
 		shouldContinue,
 		stdout,
 		stderr: result.stderr || "",
-		exitCode: result.code ?? 0,
+		exitCode,
+		killed,
+		timedOut,
 	};
 }
 
@@ -1480,10 +1516,11 @@ export default function (pi: ExtensionAPI) {
 		name: "ralph_loop",
 		label: "Ralph Loop",
 		description: [
-			"Run subagent tasks in a loop while a condition command prints 'true' to continue (anything else stops).",
+			"Run subagent tasks in a loop while a condition command exits successfully and prints 'true' to continue.",
 			"Supports single and chain modes.",
 			"Supports model/thinking overrides like subagent.",
 			"Defaults to agent 'worker' and the latest user message when agent/task are omitted.",
+			`Defaults to ${DEFAULT_LOOP_MAX_ITERATIONS} iterations, with a maximum of ${MAX_LOOP_ITERATIONS} and a ${DEFAULT_CONDITION_TIMEOUT_MS}ms condition timeout.`,
 			"If conditionCommand is omitted, it is inferred from the task text or defaults to 'echo true'.",
 		].join(" "),
 		parameters: LoopParams,
@@ -1503,6 +1540,7 @@ export default function (pi: ExtensionAPI) {
 				conditionSource: "default",
 				maxIterations: DEFAULT_LOOP_MAX_ITERATIONS,
 				sleepMs: DEFAULT_LOOP_SLEEP_MS,
+				conditionTimeoutMs: DEFAULT_CONDITION_TIMEOUT_MS,
 				lastCondition: { stdout: "", stderr: "", exitCode: 0 },
 				prompt: emptyPrompt,
 				steering: [...loopControl.steering, ...loopControl.steeringOnce],
@@ -1633,12 +1671,17 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const maxIterations = parseLoopNumber(
-				params.maxIterations === undefined ? null : String(params.maxIterations),
+				params.maxIterations,
 				DEFAULT_LOOP_MAX_ITERATIONS,
+				false,
+				MAX_LOOP_ITERATIONS,
 			);
-			if (maxIterations === null || maxIterations <= 0) {
+			if (maxIterations === null) {
 				return {
-					content: [{ type: "text", text: "maxIterations must be a positive number." }],
+					content: [{
+						type: "text",
+						text: `maxIterations must be a positive safe integer no greater than ${MAX_LOOP_ITERATIONS}.`,
+					}],
 					details: buildDetails({
 						stopReason: "invalid-params",
 						conditionCommand,
@@ -1649,19 +1692,39 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			const sleepMs = parseLoopNumber(
-				params.sleepMs === undefined ? null : String(params.sleepMs),
-				DEFAULT_LOOP_SLEEP_MS,
-				true,
-			);
-			if (sleepMs === null || sleepMs < 0) {
+			const sleepMs = parseLoopNumber(params.sleepMs, DEFAULT_LOOP_SLEEP_MS, true);
+			if (sleepMs === null) {
 				return {
-					content: [{ type: "text", text: "sleepMs must be zero or a positive number." }],
+					content: [{ type: "text", text: "sleepMs must be a non-negative safe integer." }],
 					details: buildDetails({
 						stopReason: "invalid-params",
 						conditionCommand,
 						conditionSource,
 						maxIterations,
+						prompt: promptInfo,
+					}),
+					isError: true,
+				};
+			}
+
+			const conditionTimeoutMs = parseLoopNumber(
+				params.conditionTimeoutMs,
+				DEFAULT_CONDITION_TIMEOUT_MS,
+				false,
+				MAX_CONDITION_TIMEOUT_MS,
+			);
+			if (conditionTimeoutMs === null) {
+				return {
+					content: [{
+						type: "text",
+						text: `conditionTimeoutMs must be a positive safe integer no greater than ${MAX_CONDITION_TIMEOUT_MS}.`,
+					}],
+					details: buildDetails({
+						stopReason: "invalid-params",
+						conditionCommand,
+						conditionSource,
+						maxIterations,
+						sleepMs,
 						prompt: promptInfo,
 					}),
 					isError: true,
@@ -1679,6 +1742,7 @@ export default function (pi: ExtensionAPI) {
 						conditionSource,
 						maxIterations,
 						sleepMs,
+						conditionTimeoutMs,
 						prompt: promptInfo,
 					}),
 					isError: true,
@@ -1709,7 +1773,13 @@ export default function (pi: ExtensionAPI) {
 			const iterations: LoopIterationResult[] = [];
 			let stopReason = "running";
 			let errorMessage = "";
-			let lastCondition = { stdout: "", stderr: "", exitCode: 0 };
+			let lastCondition: RalphLoopDetails["lastCondition"] = {
+				stdout: "",
+				stderr: "",
+				exitCode: 0,
+				killed: false,
+				timedOut: false,
+			};
 
 			const buildLoopDetails = (currentIterations: LoopIterationResult[]): RalphLoopDetails => {
 				const details: RalphLoopDetails = {
@@ -1720,6 +1790,7 @@ export default function (pi: ExtensionAPI) {
 					conditionSource,
 					maxIterations,
 					sleepMs,
+					conditionTimeoutMs,
 					lastCondition,
 					prompt: promptInfo,
 					steering: [...loopControl.steering, ...loopControl.steeringOnce],
@@ -1766,8 +1837,26 @@ export default function (pi: ExtensionAPI) {
 					break;
 				}
 
-				const condition = await checkLoopCondition(pi, conditionCommand, ctx.cwd, mergedSignal);
-				lastCondition = { stdout: condition.stdout, stderr: condition.stderr, exitCode: condition.exitCode };
+				const condition = await checkLoopCondition(pi, conditionCommand, ctx.cwd, mergedSignal, conditionTimeoutMs);
+				lastCondition = {
+					stdout: condition.stdout,
+					stderr: condition.stderr,
+					exitCode: condition.exitCode,
+					killed: condition.killed,
+					timedOut: condition.timedOut,
+				};
+				if (mergedSignal?.aborted) {
+					stopReason = "aborted";
+					break;
+				}
+				if (condition.timedOut) {
+					stopReason = "condition-timeout";
+					break;
+				}
+				if (condition.exitCode !== 0) {
+					stopReason = "condition-error";
+					break;
+				}
 				if (!condition.shouldContinue) {
 					stopReason = "condition-false";
 					break;
@@ -1858,6 +1947,7 @@ export default function (pi: ExtensionAPI) {
 				`ralph-loop finished after ${iterations.length} iteration${iterations.length === 1 ? "" : "s"}.`,
 				`Stop reason: ${stopReason}.`,
 				`Condition: ${conditionCommand} (${conditionSource}).`,
+				`Condition timeout: ${conditionTimeoutMs}ms.`,
 				`Max iterations: ${maxIterations}.`,
 				`Sleep: ${sleepMs}ms.`,
 			];
@@ -1890,7 +1980,7 @@ export default function (pi: ExtensionAPI) {
 				(finalDetails as any).lastOutputPath = lastOutputFullPath;
 			}
 			const summaryText = summaryLines.join("\n\n");
-			const isError = stopReason === "error" || stopReason === "aborted";
+			const isError = ["error", "aborted", "condition-error", "condition-timeout"].includes(stopReason);
 			return {
 				content: [{ type: "text", text: summaryText }],
 				details: finalDetails,
@@ -1906,6 +1996,7 @@ export default function (pi: ExtensionAPI) {
 			const condition = args.conditionCommand ? `cond: ${args.conditionCommand}` : "cond: (auto)";
 			const maxIterations = args.maxIterations ?? DEFAULT_LOOP_MAX_ITERATIONS;
 			const sleepMs = args.sleepMs ?? DEFAULT_LOOP_SLEEP_MS;
+			const conditionTimeoutMs = args.conditionTimeoutMs ?? DEFAULT_CONDITION_TIMEOUT_MS;
 			const promptInfo = buildLoopPromptInfo(args);
 			let text =
 				theme.fg("toolTitle", theme.bold("ralph_loop ")) +
@@ -1917,7 +2008,7 @@ export default function (pi: ExtensionAPI) {
 				const more = promptInfo.items.length > 1 ? ` +${promptInfo.items.length - 1} more` : "";
 				text += `\n  ${theme.fg("dim", `prompt: ${preview}${more}`)}`;
 			}
-			text += `\n  ${theme.fg("dim", `max:${maxIterations} sleep:${sleepMs}ms`)}`;
+			text += `\n  ${theme.fg("dim", `max:${maxIterations} sleep:${sleepMs}ms condition-timeout:${conditionTimeoutMs}ms`)}`;
 			return new Text(text, 0, 0);
 		},
 
@@ -1930,14 +2021,14 @@ export default function (pi: ExtensionAPI) {
 
 			const iterations = details.iterations || [];
 			const status = details.status || "completed";
-			const isError = details.stopReason === "error" || details.stopReason === "aborted";
+			const isError = ["error", "aborted", "condition-error", "condition-timeout"].includes(details.stopReason);
 			const isActive = status === "running" || status === "paused" || status === "stopping";
 			const icon = isError
 				? theme.fg("error", "✗")
 				: isActive
 					? theme.fg("accent", "•")
 					: theme.fg("success", "✓");
-			const maxIterations = typeof details.maxIterations === "number" && details.maxIterations !== Number.MAX_SAFE_INTEGER
+			const maxIterations = typeof details.maxIterations === "number"
 				? `/${details.maxIterations}`
 				: "";
 			const runId = details.runId || "(legacy run)";

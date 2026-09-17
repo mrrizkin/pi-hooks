@@ -76,11 +76,11 @@ Looped subagent execution via the `ralph_loop` tool.
 
 <img src="assets/ralph-loop.png" alt="Ralph Loop Extension" width="500">
 
-- Runs single or chain subagent tasks until a condition returns false
+- Runs single or chain subagent tasks while a condition exits successfully and prints `true`
 - Takes a prompt and exit condition (exit condition optional)
 - Can supply max iterations and minimum delay between each
 - Optionally supply model and thinking
-- Supports `conditionCommand`, `maxIterations`, and `sleepMs` controls
+- Supports `conditionCommand`, bounded `maxIterations` (default 10, maximum 100), `conditionTimeoutMs`, and `sleepMs` controls
 - Interactive steering/follow-up + pause/resume/stop commands in UI mode
 - `/ralph-view` opens a selectable, internally scrollable history overlay (thinking hidden by default)
 - Defaults to the `worker` agent and the last user prompt when omitted

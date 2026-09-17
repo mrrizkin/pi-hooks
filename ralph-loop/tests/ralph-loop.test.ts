@@ -1,4 +1,13 @@
-import registerRalphLoop, { parseRpcLine, resolveRpcExitCode } from "../ralph-loop.js";
+import registerRalphLoop, {
+  checkLoopCondition,
+  DEFAULT_CONDITION_TIMEOUT_MS,
+  DEFAULT_LOOP_MAX_ITERATIONS,
+  MAX_CONDITION_TIMEOUT_MS,
+  MAX_LOOP_ITERATIONS,
+  parseLoopNumber,
+  parseRpcLine,
+  resolveRpcExitCode,
+} from "../ralph-loop.js";
 import {
   applyLoopViewerNavigation,
   buildLoopViewerLineSource,
@@ -28,6 +37,41 @@ const tests: Array<[string, () => void | Promise<void>]> = [
     const text = "x".repeat(1024 * 1024);
     const event = parseRpcLine(JSON.stringify({ type: "message_end", message: { content: [{ type: "text", text }] } }));
     assert(event?.message?.content?.[0]?.text.length === text.length, "large RPC output must not be truncated while parsing");
+  }],
+  ["loop numbers are strict and bounded", () => {
+    assert(DEFAULT_LOOP_MAX_ITERATIONS === 10, "default loop bound should be finite");
+    assert(MAX_LOOP_ITERATIONS === 100, "loop hard cap should be 100");
+    assert(parseLoopNumber(undefined, DEFAULT_LOOP_MAX_ITERATIONS) === 10, "missing value should use the default");
+    assert(parseLoopNumber(10, DEFAULT_LOOP_MAX_ITERATIONS, false, MAX_LOOP_ITERATIONS) === 10, "valid max should be accepted");
+    assert(parseLoopNumber("10", DEFAULT_LOOP_MAX_ITERATIONS, false, MAX_LOOP_ITERATIONS) === 10, "valid numeric strings should be accepted");
+    assert(parseLoopNumber(101, DEFAULT_LOOP_MAX_ITERATIONS, false, MAX_LOOP_ITERATIONS) === null, "max above hard cap should be rejected");
+    assert(parseLoopNumber("10junk", DEFAULT_LOOP_MAX_ITERATIONS, false, MAX_LOOP_ITERATIONS) === null, "partial numeric strings should be rejected");
+    assert(parseLoopNumber(1.5, DEFAULT_LOOP_MAX_ITERATIONS, false, MAX_LOOP_ITERATIONS) === null, "fractional values should be rejected");
+    assert(parseLoopNumber(0, DEFAULT_LOOP_MAX_ITERATIONS, true) === 0, "zero should be accepted when enabled");
+  }],
+  ["condition requires success and uses a timeout", async () => {
+    let receivedOptions: any;
+    const fakePi = {
+      exec: async (_command: string, _args: string[], options: any) => {
+        receivedOptions = options;
+        return { stdout: "true\n", stderr: "failed", code: 7, killed: false };
+      },
+    };
+    const failed = await checkLoopCondition(fakePi as any, "echo true", process.cwd(), undefined, 1234);
+    assert(receivedOptions.timeout === 1234, "condition timeout should be passed to pi.exec");
+    assert(!failed.shouldContinue, "failed condition commands must not continue");
+    assert(failed.exitCode === 7, "condition exit code should be retained");
+
+    const timedOut = await checkLoopCondition(
+      { exec: async () => ({ stdout: "true", stderr: "", code: 143, killed: true }) } as any,
+      "sleep 999",
+      process.cwd(),
+      undefined,
+      DEFAULT_CONDITION_TIMEOUT_MS,
+    );
+    assert(timedOut.timedOut, "killed condition should be classified as a timeout");
+    assert(!timedOut.shouldContinue, "timed out condition must not continue");
+    assert(MAX_CONDITION_TIMEOUT_MS === 300_000, "condition timeout hard cap should be documented");
   }],
   ["run discovery deduplicates persisted and active snapshots", () => {
     const details = { runId: "run-a", status: "idle", stopReason: "max-iterations", iterations: [] };

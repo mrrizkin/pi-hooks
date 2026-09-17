@@ -13,9 +13,10 @@ Enable only `ralph-loop` in `pi config`. Dependencies are installed automaticall
 
 ## Features
 
-- Runs single or chain subagent tasks until a condition returns false
-- Takes a prompt and exit condition (exit condition optional)
-- Can supply max iterations and minimum delay between each
+- Runs single or chain subagent tasks while a condition exits successfully and prints `true`
+- Takes a prompt and optional exit condition
+- Uses a finite default of 10 iterations (maximum 100) and a 30-second condition timeout
+- Can supply max iterations, condition timeout, and minimum delay between each
 - Optionally supply model and thinking
 - Interactive steering + control commands when running in UI mode
 
@@ -44,7 +45,8 @@ Example prompt: "Use ralph loop to check the current time five times, sleeping 1
 
 ## Notes
 
-- `conditionCommand` must print `true` to continue; any other output stops the loop.
-- `maxIterations` defaults to `Number.MAX_SAFE_INTEGER` when omitted.
+- `conditionCommand` must exit successfully and print exactly `true` to continue; any other output stops the loop.
+- `maxIterations` defaults to `10` when omitted and cannot exceed `100`.
+- `conditionTimeoutMs` defaults to `30000` and cannot exceed `300000`; a timeout or failed condition stops the loop.
 - Includes a built-in `worker` fallback; user/project agents override it if present.
 - Defaults to agent `worker` and the latest user prompt when `agent`/`task` are omitted.
