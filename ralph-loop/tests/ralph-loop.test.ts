@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
-import { initTheme } from "@earendil-works/pi-coding-agent";
+import { initTheme, ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
 import registerRalphLoop, {
   buildIterationTask,
   checkLoopCondition,
@@ -21,11 +21,15 @@ import registerRalphLoop, {
 } from "../ralph-loop.js";
 import {
   applyLoopViewerNavigation,
+  buildViewerFooterRows,
   buildLoopViewerLineSource,
   buildLoopViewerLines,
   compactRenderedLines,
   discoverRalphLoopRuns,
   getNativeToolDefinition,
+  getRalphLoopOverlayConfig,
+  renderNativeIteration,
+  parseOverlayPercent,
   RalphLoopViewer,
 } from "../ui.js";
 
@@ -193,12 +197,15 @@ const tests: Array<[string, () => void | Promise<void>]> = [
     assert(scrollingViewer.render(50).join("\\n").includes("answer-30"), "End should return to the live tail");
     const collapsedText = viewer.render(80).join("\\n");
     assert(collapsedText.includes("· collapsed"), "viewer should default to collapsed output");
+    assert(collapsedText.includes("Ctrl+O collapsed") && collapsedText.includes("Ctrl+T hidden"), "footer should show current output and thinking modes");
     viewer.handleInput("\x0f");
     assert(viewer.render(80).join("\\n").includes("· simple"), "Ctrl+O should switch to simple output");
     viewer.handleInput("\x0f");
     assert(viewer.render(80).join("\\n").includes("· full"), "Ctrl+O should switch to full output");
     viewer.handleInput("\x14");
-    assert(viewer.render(80).some((line) => line.includes("secret reasoning")), "Ctrl+T should reveal thinking");
+    const visibleThinkingText = viewer.render(80).join("\n");
+    assert(visibleThinkingText.includes("secret reasoning"), "Ctrl+T should reveal thinking");
+    assert(visibleThinkingText.includes("Ctrl+T visible"), "footer should show visible thinking mode");
 
     const modeDetails = {
       ...details,
@@ -283,6 +290,61 @@ const tests: Array<[string, () => void | Promise<void>]> = [
     const allLines = buildLoopViewerLines(largeDetails);
     assert(firstLines.length <= 6, "line source should materialize only the requested viewport");
     assert(allLines.some((line) => line.includes("output shortened in viewer")), "large output should be bounded");
+  }],
+  ["overlay size configuration defaults and validates", () => {
+    assert(parseOverlayPercent("80%", 50) === 80, "percentage suffix should be accepted");
+    assert(parseOverlayPercent("101", 50) === 50, "percentages above 100 should use the fallback");
+    assert(parseOverlayPercent("0", 50) === 50, "zero should use the fallback");
+    assert(parseOverlayPercent("oops", 50) === 50, "invalid percentages should use the fallback");
+    const defaults = getRalphLoopOverlayConfig({});
+    assert(defaults.widthPercent === 90 && defaults.heightPercent === 90, "overlay defaults should be 90% by 90%");
+    const configured = getRalphLoopOverlayConfig({
+      RALPH_VIEW_WIDTH_PERCENT: "65",
+      RALPH_VIEW_HEIGHT_PERCENT: "90%",
+    });
+    assert(configured.widthPercent === 65 && configured.heightPercent === 90, "overlay environment settings should be applied");
+    const aliases = getRalphLoopOverlayConfig({ RALPH_VIEW_WIDTH: "70", RALPH_VIEW_HEIGHT: "60" });
+    assert(aliases.widthPercent === 70 && aliases.heightPercent === 60, "short overlay environment aliases should be supported");
+  }],
+  ["native sections do not add wrapper gaps", () => {
+    initTheme(undefined, false);
+    const cwd = process.cwd();
+    const tui = { requestRender: () => {} };
+    const messages = [
+      { role: "toolResult", toolName: "read", toolCallId: "one", isError: false, content: [{ type: "text", text: "first" }] },
+      { role: "toolResult", toolName: "read", toolCallId: "two", isError: false, content: [{ type: "text", text: "second" }] },
+    ];
+    const makeNativeTool = (message: any) => {
+      const tool = new ToolExecutionComponent(
+        message.toolName,
+        message.toolCallId,
+        {},
+        { showImages: false },
+        getNativeToolDefinition(message.toolName, cwd),
+        tui,
+        cwd,
+      );
+      tool.updateResult(message, false);
+      tool.setExpanded(false);
+      return tool;
+    };
+    const expected = 2 + messages.reduce((total, message) => total + makeNativeTool(message).render(80).length, 0);
+    const actual = renderNativeIteration(
+      { index: 1, details: { mode: "single", results: [{ agent: "worker", agentSource: "builtin", exitCode: 0, messages }] } },
+      80,
+      false,
+      "collapsed",
+      tui,
+      cwd,
+      {},
+    );
+    assert(actual.length === expected, "adjacent native components should not receive extra wrapper lines");
+  }],
+  ["viewer footer keeps controls and scroll info on the bottom row", () => {
+    const rows = buildViewerFooterRows("↑↓ PgUp/Dn Home/End · Ctrl+O output · Ctrl+T think · Esc", "20-40/100 · ↑ more above", 72);
+    assert(rows.length >= 1, "footer should render at least one row");
+    assert(rows.join("\\n").includes("20-40/100"), "footer should include scroll position");
+    assert(rows.every((row) => row.replace(/\\x1b\\[[0-9;]*m/g, "").length <= 72), "footer rows should fit the available width");
   }],
   ["viewer navigation clamps at both ends", () => {
     assert(applyLoopViewerNavigation(0, 100, 10, "up") === 0, "up should clamp at zero");

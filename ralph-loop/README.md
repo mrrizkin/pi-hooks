@@ -36,6 +36,8 @@ While `ralph_loop` is running in interactive mode:
 
 The viewer is an overlay and does not add the full history to the main chat. Select a run first, then use `Up`/`Down`, `PageUp`/`PageDown`, `Home`/`End`, and `Esc` to navigate and close it. It opens at the bottom and follows new output while the selected run is active; scrolling upward pauses auto-scroll and `End` resumes it. Output starts in `collapsed` mode; press `Ctrl+O` to cycle `collapsed`, `simple`, and `full`. These modes only affect tool output: `full` uses the normal native renderer, `collapsed` is its truncated state, and `simple` shows the tool call and filename/arguments without tool output. Assistant text is always shown. Thinking is hidden by default; press `Ctrl+T` inside the viewer to toggle its display without changing the model's thinking setting. Hidden thinking is replaced by `Thinking...`; visible thinking shows all thinking content.
 
+The overlay defaults to 90% width and 90% height. Override these values with percentages using `RALPH_VIEW_WIDTH_PERCENT` and `RALPH_VIEW_HEIGHT_PERCENT` (for example, `RALPH_VIEW_WIDTH_PERCENT=80 RALPH_VIEW_HEIGHT_PERCENT=70 pi -ne -e .`). Values outside 0–100 are ignored and fall back to the defaults.
+
 The main ralph-loop result stays compact; detailed assistant, thinking, and tool output is available in the viewer. Steering and follow-up messages are sent to the current iteration when possible, otherwise queued for the next iteration; queued/sent messages show in the UI.
 
 Example prompt: "Use ralph loop to check the current time five times, sleeping 1s between iterations."

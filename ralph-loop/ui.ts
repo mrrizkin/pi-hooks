@@ -1,6 +1,6 @@
 /** Lightweight, overlay-only UI for browsing ralph-loop history. */
 
-import { matchesKey, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
+import { matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
 import {
 	AssistantMessageComponent,
 	ToolExecutionComponent,
@@ -23,6 +23,36 @@ export interface RalphLoopRun {
 
 export type LoopViewerAction = "up" | "down" | "pageUp" | "pageDown" | "home" | "end";
 export type OutputDisplayMode = "collapsed" | "simple" | "full";
+
+export const DEFAULT_RALPH_VIEW_WIDTH_PERCENT = 90;
+export const DEFAULT_RALPH_VIEW_HEIGHT_PERCENT = 90;
+
+export interface RalphLoopOverlayConfig {
+  widthPercent: number;
+  heightPercent: number;
+}
+
+export function parseOverlayPercent(value: unknown, fallback: number): number {
+  if (typeof value !== "string" && typeof value !== "number") return fallback;
+  const text = String(value).trim().replace(/%$/, "");
+  if (!text || !/^\d+(?:\.\d+)?$/.test(text)) return fallback;
+  const parsed = Number(text);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 100) return fallback;
+  return parsed;
+}
+
+export function getRalphLoopOverlayConfig(env: Record<string, unknown> = process.env): RalphLoopOverlayConfig {
+  return {
+    widthPercent: parseOverlayPercent(
+      env.RALPH_VIEW_WIDTH_PERCENT ?? env.RALPH_VIEW_WIDTH,
+      DEFAULT_RALPH_VIEW_WIDTH_PERCENT,
+    ),
+    heightPercent: parseOverlayPercent(
+      env.RALPH_VIEW_HEIGHT_PERCENT ?? env.RALPH_VIEW_HEIGHT,
+      DEFAULT_RALPH_VIEW_HEIGHT_PERCENT,
+    ),
+  };
+}
 
 /** Discover persisted ralph-loop results without constructing any UI components. */
 export function discoverRalphLoopRuns(
@@ -433,8 +463,37 @@ function renderNativeComponent(component: any, width: number): string[] {
 function appendNativeComponent(lines: string[], component: any, width: number): boolean {
 	const rendered = renderNativeComponent(component, width);
 	if (rendered.length === 0) return false;
-	lines.push(...rendered, "");
+	// Native Pi components already own their internal spacing. Do not append an
+	// additional separator between adjacent sections.
+	lines.push(...rendered);
 	return true;
+}
+
+/**
+ * Put viewer controls on the left and scroll position on the right.
+ * Both sides may wrap, but remain in the same compact footer area.
+ */
+export function buildViewerFooterRows(left: string, right: string, width: number): string[] {
+	const availableWidth = Math.max(1, Math.floor(width));
+	if (availableWidth <= 2) return wrapTextWithAnsi(`${left} ${right}`, availableWidth);
+
+	const gap = 1;
+	const measuredRight = Math.max(1, visibleWidth(right));
+	const rightWidth = Math.min(measuredRight, Math.max(1, Math.floor((availableWidth - gap) * 0.45)));
+	const leftWidth = Math.max(1, availableWidth - gap - rightWidth);
+	const leftLines = wrapTextWithAnsi(left, leftWidth);
+	const rightLines = wrapTextWithAnsi(right, rightWidth);
+	const rowCount = Math.max(leftLines.length, rightLines.length, 1);
+	const rows: string[] = [];
+
+	for (let index = 0; index < rowCount; index++) {
+		const leftLine = leftLines[index] ?? "";
+		const rightLine = rightLines[index] ?? "";
+		const leftPadding = " ".repeat(Math.max(0, leftWidth - visibleWidth(leftLine)));
+		const rightPadding = " ".repeat(Math.max(0, rightWidth - visibleWidth(rightLine)));
+		rows.push(`${leftLine}${leftPadding}${" ".repeat(gap)}${rightPadding}${rightLine}`);
+	}
+	return rows;
 }
 
 /** Flatten a native component into one bounded visual line for simple mode. */
@@ -451,7 +510,7 @@ function appendSimpleNativeComponent(lines: string[], component: any, width: num
 	if (rendered.length === 0) return false;
 	const compact = compactRenderedLines(rendered, Math.max(1, width - 2));
 	if (!compact) return false;
-	lines.push(compact, "");
+	lines.push(compact);
 	return true;
 }
 
@@ -465,7 +524,7 @@ function messageText(message: any): string {
 		: safeText(message?.content).trim();
 }
 
-function renderNativeIteration(
+export function renderNativeIteration(
 	iteration: any,
 	width: number,
 	showThinking: boolean,
@@ -601,17 +660,23 @@ export class RalphLoopViewer implements Component {
 		private readonly theme: any,
 		private readonly done: (result: null) => void,
 		private readonly cwd = process.cwd(),
+		private readonly heightPercent = DEFAULT_RALPH_VIEW_HEIGHT_PERCENT,
 	) {}
 
-	private viewportLines(): number {
+	private overlayRows(): number {
 		const rows = Number(this.tui?.terminal?.rows);
-		// The frame consumes two rows, while header, controls, and footer consume
-		// three more. Keep the body below the overlay maxHeight.
-		return Math.max(1, Math.min(24, Number.isFinite(rows) && rows > 0 ? rows - 7 : 17));
+		const terminalRows = Number.isFinite(rows) && rows > 0 ? rows : 24;
+		return Math.max(1, Math.floor((terminalRows * this.heightPercent) / 100));
 	}
 
-	private maxOffset(totalLines: number): number {
-		return Math.max(0, totalLines - this.viewportLines());
+	private viewportLines(_width = this.cachedWidth || Number(this.tui?.terminal?.columns) || 80): number {
+		// The exact footer height is resolved during render because it may wrap.
+		// Reserve a conservative amount here for auto-scroll calculations.
+		return Math.max(1, this.overlayRows() - 6);
+	}
+
+	private maxOffset(totalLines: number, width = this.cachedWidth || Number(this.tui?.terminal?.columns) || 80): number {
+		return Math.max(0, totalLines - this.viewportLines(width));
 	}
 
 	private renderIteration(iteration: any, width: number): string[] {
@@ -679,19 +744,21 @@ export class RalphLoopViewer implements Component {
 		this.cachedOutputMode = this.outputMode;
 		this.cachedNativeLines = lines;
 		this.lastTotalLines = lines.length;
-		const maxOffset = this.maxOffset(lines.length);
+		const maxOffset = this.maxOffset(lines.length, width);
 		if (!this.hasRendered || this.followTail) {
 			this.offset = maxOffset;
 		} else if (lines.length !== previousTotal) {
-			this.offset = clampLoopViewerOffset(this.offset, lines.length, this.viewportLines());
+			this.offset = clampLoopViewerOffset(this.offset, lines.length, this.viewportLines(width));
 		} else {
-			this.offset = clampLoopViewerOffset(this.offset, lines.length, this.viewportLines());
+			this.offset = clampLoopViewerOffset(this.offset, lines.length, this.viewportLines(width));
 		}
 		return lines;
 	}
 
 	private frameLine(line: string, innerWidth: number): string {
-		const text = truncateToWidth(line, innerWidth);
+		// Do not add a second ellipsis at the frame edge. Native tool renderers
+		// remain responsible for their own truncation indicators.
+		const text = truncateToWidth(line, innerWidth, "");
 		const padding = Math.max(0, innerWidth - visibleWidth(text));
 		return `${color(this.theme, "border", "│")}${text}${" ".repeat(padding)}${color(this.theme, "border", "│")}`;
 	}
@@ -709,30 +776,53 @@ export class RalphLoopViewer implements Component {
 	render(width: number): string[] {
 		const details = this.getDetails() || this.run.details;
 		const lines = this.renderedLines(details, width);
-		const viewport = this.viewportLines();
-		this.offset = clampLoopViewerOffset(this.offset, lines.length, viewport);
-		const end = Math.min(lines.length, this.offset + viewport);
-		const position = lines.length === 0 ? "0/0" : `${this.offset + 1}-${end}/${lines.length}`;
 		const innerWidth = Math.max(1, width - 2);
 		const header = truncateToWidth(
 			color(this.theme, "accent", `Ralph Loop ${this.run.runId} · ${details?.status || "unknown"} · ${this.outputMode}`),
 			innerWidth,
+			"",
 		);
-		const controls = truncateToWidth(
-			color(
+		const controls = color(
+			this.theme,
+			"dim",
+			`↑↓ PgUp/Dn Home/End · Ctrl+O ${this.outputMode} · Ctrl+T ${this.showThinking ? "visible" : "hidden"} · auto:${this.followTail ? "on" : "paused"} · Esc`,
+		);
+		const overlayRows = this.overlayRows();
+		const maxBodyRows = Math.max(1, overlayRows - 2);
+		const maxFooterRows = Math.max(1, maxBodyRows - 1);
+		let viewport = this.viewportLines(width);
+		let offset = clampLoopViewerOffset(this.offset, lines.length, viewport);
+		let end = Math.min(lines.length, offset + viewport);
+		let position = lines.length === 0 ? "0/0" : `${offset + 1}-${end}/${lines.length}`;
+		let above = offset > 0 ? "↑ more above" : "";
+		let below = end < lines.length ? "↓ more below" : "";
+		let scrollInfo = color(
+			this.theme,
+			"muted",
+			`${position}${above || below ? ` · ${[above, below].filter(Boolean).join(" · ")}` : ""}`,
+		);
+		let footer = buildViewerFooterRows(controls, scrollInfo, innerWidth).slice(0, maxFooterRows);
+		const availableContentRows = Math.max(0, maxBodyRows - 1 - footer.length);
+		if (availableContentRows !== viewport) {
+			viewport = availableContentRows;
+			offset = this.followTail
+				? Math.max(0, lines.length - viewport)
+				: clampLoopViewerOffset(offset, lines.length, viewport);
+			this.offset = offset;
+			end = Math.min(lines.length, offset + viewport);
+			position = lines.length === 0 ? "0/0" : `${offset + 1}-${end}/${lines.length}`;
+			above = offset > 0 ? "↑ more above" : "";
+			below = end < lines.length ? "↓ more below" : "";
+			scrollInfo = color(
 				this.theme,
-				"dim",
-				`↑↓ PgUp/Dn Home/End · Ctrl+O output · Ctrl+T think · auto:${this.followTail ? "on" : "paused"} · Esc`,
-			),
-			innerWidth,
-		);
-		const above = this.offset > 0 ? "↑ more above" : "";
-		const below = end < lines.length ? "↓ more below" : "";
-		const footer = truncateToWidth(
-			color(this.theme, "muted", `${position}${above || below ? ` · ${[above, below].filter(Boolean).join(" · ")}` : ""}`),
-			innerWidth,
-		);
-		const body = [header, controls, ...lines.slice(this.offset, end), footer];
+				"muted",
+				`${position}${above || below ? ` · ${[above, below].filter(Boolean).join(" · ")}` : ""}`,
+			);
+			footer = buildViewerFooterRows(controls, scrollInfo, innerWidth).slice(0, maxFooterRows);
+		} else {
+			this.offset = offset;
+		}
+		const body = [header, ...lines.slice(offset, end), ...footer];
 		const top = color(this.theme, "borderAccent", `╭${"─".repeat(innerWidth)}╮`);
 		const bottom = color(this.theme, "borderAccent", `╰${"─".repeat(innerWidth)}╯`);
 		this.hasRendered = true;
@@ -743,7 +833,7 @@ export class RalphLoopViewer implements Component {
 		const details = this.getDetails() || this.run.details;
 		const inputWidth = this.cachedWidth || Number(this.tui?.terminal?.columns) || 80;
 		const lines = this.renderedLines(details, inputWidth);
-		const viewport = this.viewportLines();
+		const viewport = this.viewportLines(inputWidth);
 		let action: LoopViewerAction | undefined;
 		if (matchesKey(data, "up")) action = "up";
 		else if (matchesKey(data, "down")) action = "down";
@@ -774,7 +864,7 @@ export class RalphLoopViewer implements Component {
 		if (!action) return;
 		const previousOffset = this.offset;
 		this.offset = applyLoopViewerNavigation(this.offset, lines.length, viewport, action);
-		const maxOffset = this.maxOffset(lines.length);
+		const maxOffset = this.maxOffset(lines.length, inputWidth);
 		if (action === "end" || this.offset >= maxOffset) this.followTail = true;
 		else if (this.offset < previousOffset || action === "home" || action === "pageUp" || action === "up") this.followTail = false;
 		this.tui?.requestRender?.();

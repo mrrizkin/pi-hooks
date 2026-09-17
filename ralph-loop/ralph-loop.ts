@@ -21,7 +21,12 @@ import {
 	truncateTail,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { discoverRalphLoopRuns, RalphLoopViewer, selectRalphLoopRun } from "./ui.js";
+import {
+	discoverRalphLoopRuns,
+	getRalphLoopOverlayConfig,
+	RalphLoopViewer,
+	selectRalphLoopRun,
+} from "./ui.js";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.js";
 
 /**
@@ -1636,6 +1641,7 @@ export default function (pi: ExtensionAPI) {
 			const selected = await selectRalphLoopRun(ctx, runs);
 			if (!selected) return;
 
+			const overlayConfig = getRalphLoopOverlayConfig();
 			let overlayTui: any;
 			let viewer: RalphLoopViewer | undefined;
 			// Keep the last active snapshot with the selected run. The active run
@@ -1667,18 +1673,23 @@ export default function (pi: ExtensionAPI) {
 			try {
 				await ctx.ui.custom((tui: any, theme: any, _keybindings: any, done: (result: null) => void) => {
 					overlayTui = tui;
-					viewer = new RalphLoopViewer(selected, getDetails, tui, theme, done, ctx.cwd);
+					viewer = new RalphLoopViewer(
+						selected,
+						getDetails,
+						tui,
+						theme,
+						done,
+						ctx.cwd,
+						overlayConfig.heightPercent,
+					);
 					return viewer;
 				}, {
 					overlay: true,
-					overlayOptions: () => {
-						const rows = Number(overlayTui?.terminal?.rows);
-						return {
-							width: "92%",
-							maxHeight: Math.max(5, Math.min(32, Number.isFinite(rows) && rows > 0 ? rows - 2 : 30)),
-							anchor: "center",
-							margin: 1,
-						};
+					overlayOptions: {
+						width: `${overlayConfig.widthPercent}%`,
+						maxHeight: `${overlayConfig.heightPercent}%`,
+						anchor: "center",
+						margin: 1,
 					},
 				});
 			} finally {

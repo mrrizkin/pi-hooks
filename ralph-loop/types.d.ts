@@ -92,6 +92,7 @@ declare module "@earendil-works/pi-tui" {
 	}
 	export const truncateToWidth: any;
 	export const visibleWidth: any;
+	export const wrapTextWithAnsi: any;
 	export class Markdown {
 		constructor(...args: any[]);
 		setText(...args: any[]): void;
