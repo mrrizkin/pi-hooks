@@ -8,7 +8,10 @@
 
 // Suppress stream errors from vscode-jsonrpc when LSP process exits
 process.on('uncaughtException', (err) => {
-  if (err.message?.includes('write after end')) return;
+  // vscode-jsonrpc can race a language-server shutdown with a queued write.
+  // These are expected cleanup errors, not failed integration assertions.
+  const code = (err as NodeJS.ErrnoException).code;
+  if (code === "ERR_STREAM_DESTROYED" || /write after (end|.*destroyed)/i.test(err.message ?? "")) return;
   console.error('Uncaught:', err);
   process.exit(1);
 });

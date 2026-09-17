@@ -846,9 +846,12 @@ export class LSPManager {
 
       client.capabilities = (initResult as any)?.capabilities;
 
-      conn.sendNotification(InitializedNotification.type, {});
+      // The server may exit immediately after initialization (for example when a
+      // configured command is unavailable). Treat writes during that shutdown as
+      // best-effort so vscode-jsonrpc cannot surface an unhandled rejection.
+      try { void conn.sendNotification(InitializedNotification.type, {}).catch(() => {}); } catch {}
       if (handle.initOptions) {
-        conn.sendNotification("workspace/didChangeConfiguration", { settings: handle.initOptions });
+        try { void conn.sendNotification("workspace/didChangeConfiguration", { settings: handle.initOptions }).catch(() => {}); } catch {}
       }
       // A server that stays alive briefly is considered healthy; this prevents
       // one transient crash from permanently disabling the project.
