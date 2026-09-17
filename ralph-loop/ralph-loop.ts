@@ -13,18 +13,15 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
-import type { ImageContent, Message, TextContent } from "@earendil-works/pi-ai";
+import type { Message } from "@earendil-works/pi-ai";
 import { StringEnum, Type } from "@earendil-works/pi-ai";
 import {
 	type ExtensionAPI,
-	AssistantMessageComponent,
-	DynamicBorder,
-	ToolExecutionComponent,
-	UserMessageComponent,
 	formatSize,
 	truncateTail,
 } from "@earendil-works/pi-coding-agent";
-import { Box, Container, Spacer, Text } from "@earendil-works/pi-tui";
+import { Text } from "@earendil-works/pi-tui";
+import { discoverRalphLoopRuns, RalphLoopViewer, selectRalphLoopRun } from "./ui.js";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.js";
 
 /**
@@ -73,7 +70,7 @@ function lookupProviderForModel(modelName: string): string | null {
 	}
 }
 
-interface UsageStats {
+export interface UsageStats {
 	input: number;
 	output: number;
 	cacheRead: number;
@@ -83,7 +80,7 @@ interface UsageStats {
 	turns: number;
 }
 
-interface SingleResult {
+export interface SingleResult {
 	agent: string;
 	agentSource: "user" | "project" | "builtin" | "unknown";
 	task: string;
@@ -98,35 +95,36 @@ interface SingleResult {
 	sessionFile?: string; // Path to subagent's session file
 }
 
-interface SubagentDetails {
+export interface SubagentDetails {
 	mode: "single" | "chain";
 	agentScope: AgentScope;
 	projectAgentsDir: string | null;
 	results: SingleResult[];
 }
 
-interface LoopIterationResult {
+export interface LoopIterationResult {
 	index: number;
 	details: SubagentDetails;
 	output: string;
 	isError?: boolean;
 }
 
-interface LoopPromptItem {
+export interface LoopPromptItem {
 	agent: string;
 	task: string;
 	model?: string;
 	thinking?: string;
 }
 
-interface LoopPromptInfo {
+export interface LoopPromptInfo {
 	mode: "single" | "chain";
 	items: LoopPromptItem[];
 }
 
 type LoopRunStatus = "idle" | "running" | "paused" | "stopping";
 
-interface RalphLoopDetails {
+export interface RalphLoopDetails {
+	runId: string;
 	iterations: LoopIterationResult[];
 	stopReason: string;
 	conditionCommand: string;
@@ -142,7 +140,7 @@ interface RalphLoopDetails {
 	status: LoopRunStatus;
 }
 
-interface LoopControlState {
+export interface LoopControlState {
 	status: LoopRunStatus;
 	runId: string | null;
 	iterations: number;
@@ -174,189 +172,6 @@ function getFinalOutput(messages: Message[]): string {
 		}
 	}
 	return "";
-}
-
-type LoopViewerEntry =
-	| { type: "section"; text: string }
-	| { type: "meta"; text: string }
-	| { type: "note"; text: string }
-	| { type: "user"; text: string }
-	| { type: "assistant"; message: Message }
-	| {
-			type: "toolExecution";
-			toolName: string;
-			args: Record<string, any>;
-			result: { content: (TextContent | ImageContent)[]; details?: any; isError: boolean; isPartial?: boolean };
-		};
-
-function buildEntryComponent(entry: LoopViewerEntry, theme: any, ui: any, cwd: string, expanded: boolean) {
-	switch (entry.type) {
-		case "section":
-			return new Text(theme.fg("accent", entry.text), 1, 0);
-		case "meta":
-			return new Text(theme.fg("dim", entry.text), 1, 0);
-		case "note":
-			return new Text(theme.fg("muted", entry.text), 1, 0);
-		case "user":
-			return new UserMessageComponent(entry.text);
-		case "assistant":
-			return new AssistantMessageComponent(entry.message as any, false);
-		case "toolExecution": {
-			const toolComp = new ToolExecutionComponent(
-				entry.toolName,
-				entry.args,
-				{ showImages: false },
-				undefined,
-				ui,
-				cwd,
-			);
-			toolComp.updateResult(entry.result, Boolean(entry.result.isPartial));
-			toolComp.setExpanded(expanded);
-			return toolComp;
-		}
-	}
-}
-
-function renderLoopEntries(entries: LoopViewerEntry[], theme: any, tui: any, cwd: string, expanded: boolean) {
-	const container = new Container();
-	const toolUi = tui ?? { requestRender: () => {} };
-	for (const entry of entries) {
-		const component = buildEntryComponent(entry, theme, toolUi, cwd, expanded);
-		if (component) {
-			container.addChild(component);
-			container.addChild(new Spacer(1));
-		}
-	}
-	return container;
-}
-
-function buildLoopEntries(loopDetails: RalphLoopDetails): LoopViewerEntry[] {
-	const entries: LoopViewerEntry[] = [];
-	entries.push({ type: "meta", text: `Status: ${loopDetails.status}` });
-	entries.push({ type: "meta", text: `Stop: ${loopDetails.stopReason}` });
-	entries.push({ type: "meta", text: `Condition: ${loopDetails.conditionCommand} (${loopDetails.conditionSource})` });
-	entries.push({ type: "meta", text: `Iterations: ${loopDetails.iterations.length}` });
-
-	const appendQueuedEntries = () => {
-		const hasQueued =
-			loopDetails.steering.length > 0 ||
-			loopDetails.followUps.length > 0 ||
-			loopDetails.steeringSent.length > 0 ||
-			loopDetails.followUpsSent.length > 0;
-		if (!hasQueued) return;
-		entries.push({ type: "section", text: "Queued Messages" });
-		if (loopDetails.steering.length > 0) {
-			entries.push({ type: "note", text: `Steering queued: ${loopDetails.steering.join(" | ")}` });
-		}
-		if (loopDetails.followUps.length > 0) {
-			entries.push({ type: "note", text: `Follow-ups queued: ${loopDetails.followUps.join(" | ")}` });
-		}
-		if (loopDetails.steeringSent.length > 0) {
-			entries.push({ type: "note", text: `Steering sent: ${loopDetails.steeringSent.join(" | ")}` });
-		}
-		if (loopDetails.followUpsSent.length > 0) {
-			entries.push({ type: "note", text: `Follow-ups sent: ${loopDetails.followUpsSent.join(" | ")}` });
-		}
-	};
-
-	if (loopDetails.iterations.length === 0) {
-		entries.push({ type: "note", text: "(no iterations yet)" });
-		appendQueuedEntries();
-		return entries;
-	}
-
-	for (const iteration of loopDetails.iterations) {
-		entries.push({ type: "section", text: `Iteration ${iteration.index} (${iteration.details.mode})` });
-
-		for (const result of iteration.details.results) {
-			const statusIcon = result.exitCode === 0 ? "✓" : "✗";
-			const agentLine = `${statusIcon} ${result.agent} (${result.agentSource})`;
-			entries.push({ type: "note", text: agentLine });
-			if (result.task) entries.push({ type: "note", text: `Task: ${result.task}` });
-			if (result.errorMessage) entries.push({ type: "note", text: `Error: ${result.errorMessage}` });
-
-			const toolCalls = new Map<string, { name: string; args: Record<string, any> }>();
-			const toolResults = new Map<
-				string,
-				{
-					toolName: string;
-					result: {
-						content: (TextContent | ImageContent)[];
-						details?: any;
-						isError: boolean;
-						isPartial?: boolean;
-					};
-				}
-			>();
-
-			for (const msg of result.messages) {
-				if (msg.role === "assistant") {
-					for (const part of msg.content) {
-						if (part.type === "toolCall") {
-							toolCalls.set(part.id, { name: part.name, args: part.arguments });
-						}
-					}
-				} else if (msg.role === "toolResult" && msg.toolCallId) {
-					toolResults.set(msg.toolCallId, {
-						toolName: msg.toolName,
-						result: {
-							content: msg.content,
-							details: msg.details,
-							isError: msg.isError,
-							isPartial: msg.isPartial,
-						},
-					});
-				}
-			}
-
-			for (const msg of result.messages) {
-				if (msg.role === "assistant") {
-					entries.push({ type: "assistant", message: msg });
-					for (const part of msg.content) {
-						if (part.type !== "toolCall") continue;
-						const toolResult = toolResults.get(part.id);
-						entries.push({
-							type: "toolExecution",
-							toolName: part.name || toolResult?.toolName || "",
-							args: part.arguments ?? {},
-							result:
-								toolResult?.result ??
-								{
-									content: [],
-									details: undefined,
-									isError: false,
-									isPartial: true,
-								},
-						});
-					}
-				} else if (msg.role === "user") {
-					const text = extractTextFromContent(msg.content).trim();
-					entries.push({ type: "user", text: text || "(user message)" });
-				} else if (msg.role === "toolResult") {
-					// Render orphan tool results (e.g., when toolCall is missing)
-					if (msg.toolCallId && toolCalls.has(msg.toolCallId)) continue;
-					entries.push({
-						type: "toolExecution",
-						toolName: msg.toolName,
-						args: {},
-						result: {
-							content: msg.content,
-							details: msg.details,
-							isError: msg.isError,
-							isPartial: msg.isPartial,
-						},
-					});
-				}
-			}
-
-			if (result.messages.length === 0) {
-				entries.push({ type: "note", text: "(no messages)" });
-			}
-		}
-	}
-
-	appendQueuedEntries();
-	return entries;
 }
 
 function formatSteeringText(messages: string[]): string | null {
@@ -1263,8 +1078,11 @@ function formatTailTruncationNotice(truncation: any, fullOutputPath: string | nu
 	return `[Showing lines ${startLine}-${endLine} of ${truncation.totalLines} (${formatSize(truncation.maxBytes)} limit). ${fullOutputLabel}]`;
 }
 
-function formatLastOutputForSummary(lastOutput: string): { text: string; fullOutputPath: string | null } {
-	const truncation = truncateTail(lastOutput);
+function formatLastOutputForSummary(lastOutput: string, compact = false): { text: string; fullOutputPath: string | null } {
+	// Keep the interactive tool result compact in the main chat. The complete
+	// output is still retained in the run details (and optionally written to a
+	// temp file). Non-UI modes retain the previous output limits.
+	const truncation = compact ? truncateTail(lastOutput, { maxLines: 20, maxBytes: 4_000 }) : truncateTail(lastOutput);
 	let outputText = truncation.content || "(no output)";
 	if (!truncation.truncated) return { text: outputText, fullOutputPath: null };
 
@@ -1358,6 +1176,7 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	const activeRuns = new Set<ActiveRun>();
+	const viewerRefreshers = new Set<() => void>();
 	const registerActiveRun: ActiveRunRegistration = (run) => {
 		activeRuns.add(run);
 		return () => activeRuns.delete(run);
@@ -1581,6 +1400,82 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerCommand("ralph-view", {
+		description: "Select and view ralph_loop history",
+		handler: async (_args, ctx) => {
+			if (!ctx.hasUI || typeof ctx.ui?.custom !== "function") {
+				ctx.ui?.notify?.("Interactive overlay UI is required for /ralph-view.", "info");
+				return;
+			}
+
+			const entries = ctx.sessionManager?.getEntries?.() ?? [];
+			const activeDetails = loopControl.lastDetails;
+			const activeRunId = loopControl.status === "idle" ? null : loopControl.runId;
+			const runs = discoverRalphLoopRuns(entries, activeDetails, activeRunId);
+			if (runs.length === 0) {
+				ctx.ui.notify("No ralph_loop runs available to view.", "info");
+				return;
+			}
+
+			// This is intentionally a separate interaction. Do not open the
+			// viewer implicitly for the latest run.
+			const selected = await selectRalphLoopRun(ctx, runs);
+			if (!selected) return;
+
+			let overlayTui: any;
+			let viewer: RalphLoopViewer | undefined;
+			// Keep the last active snapshot with the selected run. The active run
+			// can finish while the overlay is open, and loopControl is reused by a
+			// later invocation.
+			let selectedDetails = selected.details;
+			let refreshScheduled = false;
+			const getDetails = () =>
+				selected.active && loopControl.runId === selected.runId
+					? loopControl.lastDetails || selectedDetails
+					: selectedDetails;
+			const refresh = () => {
+				// Completed runs are immutable snapshots. Ignore updates from a
+				// later run, and avoid waking a viewer for an unrelated run.
+				if (!selected.active || loopControl.runId !== selected.runId || !loopControl.lastDetails) return;
+				selectedDetails = loopControl.lastDetails;
+				// RPC events can arrive in bursts. Invalidate immediately so a
+				// synchronous render sees fresh data, but schedule at most one TUI
+				// render request per turn of the event loop.
+				viewer?.invalidate();
+				if (refreshScheduled) return;
+				refreshScheduled = true;
+				queueMicrotask(() => {
+					refreshScheduled = false;
+					if (viewer) overlayTui?.requestRender?.();
+				});
+			};
+			viewerRefreshers.add(refresh);
+			try {
+				await ctx.ui.custom((tui: any, theme: any, _keybindings: any, done: (result: null) => void) => {
+					overlayTui = tui;
+					viewer = new RalphLoopViewer(selected, getDetails, tui, theme, done);
+					return viewer;
+				}, {
+					overlay: true,
+					overlayOptions: () => {
+						const rows = Number(overlayTui?.terminal?.rows);
+						return {
+							width: "92%",
+							maxHeight: Math.max(5, Math.min(32, Number.isFinite(rows) && rows > 0 ? rows - 2 : 30)),
+							anchor: "center",
+							margin: 1,
+						};
+					},
+				});
+			} finally {
+				viewerRefreshers.delete(refresh);
+				viewer?.dispose?.();
+				viewer = undefined;
+				overlayTui = undefined;
+			}
+		},
+	});
+
 	pi.registerTool({
 		name: "ralph_loop",
 		label: "Ralph Loop",
@@ -1598,8 +1493,10 @@ export default function (pi: ExtensionAPI) {
 			const discovery = discoverAgents(ctx.cwd, agentScope);
 			const agents = discovery.agents;
 			const emptyPrompt: LoopPromptInfo = { mode: "single", items: [] };
+			const invocationRunId = crypto.randomUUID().slice(0, 8);
 
 			const buildDetails = (overrides: Partial<RalphLoopDetails>): RalphLoopDetails => ({
+				runId: invocationRunId,
 				iterations: [],
 				stopReason: "invalid-params",
 				conditionCommand: "",
@@ -1794,7 +1691,7 @@ export default function (pi: ExtensionAPI) {
 			const baseLoopParams = cloneLoopParams(loopParams);
 
 			loopControl.status = "running";
-			loopControl.runId = crypto.randomUUID().slice(0, 8);
+			loopControl.runId = invocationRunId;
 			loopControl.iterations = 0;
 			loopControl.steering = [];
 			loopControl.steeringOnce = [];
@@ -1816,6 +1713,7 @@ export default function (pi: ExtensionAPI) {
 
 			const buildLoopDetails = (currentIterations: LoopIterationResult[]): RalphLoopDetails => {
 				const details: RalphLoopDetails = {
+					runId: invocationRunId,
 					iterations: [...currentIterations],
 					stopReason,
 					conditionCommand,
@@ -1832,8 +1730,13 @@ export default function (pi: ExtensionAPI) {
 				};
 				loopControl.iterations = currentIterations.length;
 				loopControl.lastDetails = details;
+				for (const refresh of viewerRefreshers) refresh();
 				return details;
 			};
+
+			// Publish an empty active snapshot so /ralph-view can select a run
+			// while the first condition check or iteration is still in flight.
+			buildLoopDetails(iterations);
 
 			const emitUpdate = () => {
 				const details = buildLoopDetails(iterations);
@@ -1965,7 +1868,7 @@ export default function (pi: ExtensionAPI) {
 			if (errorMessage && errorMessage !== lastOutput) summaryLines.push(`Error: ${errorMessage}`);
 			let lastOutputFullPath: string | null = null;
 			if (lastOutput) {
-				const formatted = formatLastOutputForSummary(lastOutput);
+				const formatted = formatLastOutputForSummary(lastOutput, Boolean(ctx.hasUI));
 				lastOutputFullPath = formatted.fullOutputPath;
 				summaryLines.push(`Last output:\n${formatted.text}`);
 			}
@@ -2018,7 +1921,7 @@ export default function (pi: ExtensionAPI) {
 			return new Text(text, 0, 0);
 		},
 
-		renderResult(result, { expanded }, theme) {
+		renderResult(result, _options, theme) {
 			const details = result.details as RalphLoopDetails | undefined;
 			if (!details) {
 				const text = result.content[0];
@@ -2026,31 +1929,24 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const iterations = details.iterations || [];
+			const status = details.status || "completed";
 			const isError = details.stopReason === "error" || details.stopReason === "aborted";
-			const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
-			const header =
-				icon +
-				" " +
-				theme.fg("toolTitle", theme.bold("ralph_loop ")) +
-				theme.fg("accent", `${iterations.length} iteration${iterations.length === 1 ? "" : "s"}`);
-
-			const wrapper = new Container();
-			const mainBox = new Box(1, 0, (text: string) => theme.bg("toolPendingBg", text));
-			const container = new Container();
-
-			container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
-			container.addChild(new Spacer(1));
-			container.addChild(new Text(header, 1, 0));
-			container.addChild(new Spacer(1));
-			container.addChild(new DynamicBorder((s: string) => theme.fg("muted", s)));
-
-			const entriesComponent = renderLoopEntries(buildLoopEntries(details), theme, undefined, process.cwd(), expanded);
-			container.addChild(entriesComponent);
-			container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
-
-			mainBox.addChild(container);
-			wrapper.addChild(mainBox);
-			return wrapper;
+			const isActive = status === "running" || status === "paused" || status === "stopping";
+			const icon = isError
+				? theme.fg("error", "✗")
+				: isActive
+					? theme.fg("accent", "•")
+					: theme.fg("success", "✓");
+			const maxIterations = typeof details.maxIterations === "number" && details.maxIterations !== Number.MAX_SAFE_INTEGER
+				? `/${details.maxIterations}`
+				: "";
+			const runId = details.runId || "(legacy run)";
+			const lines = [
+				`${icon} ${theme.fg("toolTitle", theme.bold("ralph_loop "))}${theme.fg("accent", `${status}: ${iterations.length}${maxIterations} iteration${iterations.length === 1 ? "" : "s"}`)}`,
+				`${theme.fg("dim", `Run: ${runId} · Stop: ${details.stopReason}`)}`,
+				`${theme.fg("muted", "Use /ralph-view to inspect the full history.")}`,
+			];
+			return new Text(lines.join("\n"), 0, 0);
 		},
 	});
 }

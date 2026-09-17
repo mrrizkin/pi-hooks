@@ -29,8 +29,11 @@ While `ralph_loop` is running in interactive mode:
 - `/ralph-pause` / `/ralph-resume` to pause/resume the currently running iteration
 - `/ralph-stop` to abort the loop
 - `/ralph-status` to show loop status
+- `/ralph-view` to select a run and open its scrollable history viewer
 
-Tool results render with the rich UI by default (no collapsed trim). Ctrl+O still expands nested tool outputs. Steering and follow-up messages are sent to the current iteration when possible, otherwise queued for the next iteration; queued/sent messages show in the UI.
+The viewer is an overlay and does not add the full history to the main chat. Select a run first, then use `Up`/`Down`, `PageUp`/`PageDown`, `Home`/`End`, and `Esc` to navigate and close it. Thinking is hidden by default; press `Ctrl+T` inside the viewer to toggle its display without changing the model's thinking setting.
+
+The main ralph-loop result stays compact; detailed assistant, thinking, and tool output is available in the viewer. Steering and follow-up messages are sent to the current iteration when possible, otherwise queued for the next iteration; queued/sent messages show in the UI.
 
 Example prompt: "Use ralph loop to check the current time five times, sleeping 1s between iterations."
 

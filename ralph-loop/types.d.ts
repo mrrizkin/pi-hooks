@@ -61,6 +61,12 @@ declare module "@earendil-works/pi-coding-agent" {
 }
 
 declare module "@earendil-works/pi-tui" {
+	export interface Component {
+		render(width: number): string[];
+		invalidate(): void;
+		handleInput?(data: string): void;
+		dispose?(): void;
+	}
 	export class Box {
 		constructor(...args: any[]);
 		addChild(...args: any[]): void;
