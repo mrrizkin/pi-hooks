@@ -35,19 +35,23 @@ Git-based checkpoint system for restoring code state when forking conversations.
 Language Server Protocol integration (hook + tool).
 
 The package exports two extensions via `package.json`:
-- `lsp-hook.ts` - Auto-diagnostics (default at agent end)
+- `lsp.ts` - Auto-diagnostics hook (default at agent end)
 - `lsp-tool.ts` - On-demand LSP queries
 
 **Hook** (auto-diagnostics):
 - Default: runs diagnostics once at agent end for touched files
 - Optional: run after each `write`/`edit`
 - Configure via `/lsp` to switch to per-edit or disabled
+- Interactive extension prompts accept `1`–`9` shortcuts as well as arrow keys/Enter
 - Supports web, Flutter, and common backend stacks
-- Manages LSP server lifecycles per project root
+- Manages LSP server lifecycles per project root, retries failed starts with backoff, and cleans up detached child processes
+
+Supported server integrations are discovered only when a project root marker and executable are present: Dart (`dart`), TypeScript/JavaScript (`typescript-language-server`), C/C++ (`clangd`), Vue (`vue-language-server`), Svelte (`svelteserver`), Python (`pyright-langserver`), Go (`gopls`), Kotlin (`kotlin-lsp` or `kotlin-language-server`), Ruby (`ruby-lsp`), Swift (`sourcekit-lsp`/`xcrun`), and Rust (`rust-analyzer`). Optional declarative configuration lives at `${PI_CODING_AGENT_DIR:-~/.pi/agent}/lsp.json` globally and `.pi/lsp.json` per project; global config can add/override servers, while project config is limited to disabling servers or tuning bounded diagnostic waits.
 
 **Tool** (on-demand queries):
 - Definitions, references, hover, symbols, diagnostics, signatures
 - Query by symbol name or line/column position
+- Rename returns a preview `WorkspaceEdit` by default; pass `apply: true` to apply text edits transactionally within the workspace. Resource operations and edits outside the workspace are rejected.
 
 <img src="assets/lsp-screenshot.png" alt="LSP Extension" width="500">
 
@@ -110,13 +114,16 @@ Shows the average output tokens per second (TPS) in the footer status line.
 
 ## Testing
 
+From the repository root:
+
 ```bash
-cd lsp && npm install
-cd ../permission && npm install
-cd ../checkpoint && npm test
-cd ../lsp && npm run test:all
-cd ../permission && npm test
+npm install
+npm run typecheck
+npm test
+npm run smoke-import
 ```
+
+`npm test` runs checkpoint, permission, LSP unit/integration tests, and Ralph-loop lifecycle tests. Integration tests skip language-specific checks when their server binary is not installed.
 
 ## License
 

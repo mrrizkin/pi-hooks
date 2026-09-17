@@ -3,10 +3,27 @@
   "version": "1.0.5",
   "description": "Collection of pi extensions (checkpoint, lsp, permission, ralph-loop, repeat)",
   "license": "MIT",
+  "type": "module",
   "keywords": ["pi-package", "pi", "pi-coding-agent"],
+  "scripts": {
+    "typecheck": "npm run typecheck:lsp && npm run typecheck:checkpoint && npm run typecheck:permission && npm run typecheck:ralph && npm run typecheck:repeat && npm run typecheck:token-rate",
+    "typecheck:lsp": "npm --prefix lsp run typecheck",
+    "typecheck:checkpoint": "npm --prefix checkpoint run typecheck",
+    "typecheck:permission": "npm --prefix permission run typecheck",
+    "typecheck:ralph": "npm --prefix ralph-loop run typecheck",
+    "typecheck:repeat": "npm --prefix repeat run typecheck",
+    "typecheck:token-rate": "npm --prefix token-rate run typecheck",
+    "test": "npm --prefix checkpoint test && npm --prefix permission test && npm --prefix lsp run test:all && npm --prefix ralph-loop test",
+    "smoke-import": "tsx scripts/smoke-import.ts"
+  },
   "dependencies": {
     "shell-quote": "^1.8.3",
-    "vscode-languageserver-protocol": "^3.17.5"
+    "vscode-languageserver-protocol": "^3.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   },
   "pi": {
     "extensions": [

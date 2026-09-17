@@ -5,16 +5,19 @@ Language Server Protocol integration for pi-coding-agent.
 ## Highlights
 
 - **Hook** (`lsp.ts`): Auto-diagnostics (default at agent end; optional per `write`/`edit`)
-- **Tool** (`lsp-tool.ts`): On-demand LSP queries (definitions, references, hover, symbols, diagnostics, signatures)
+- **Tool** (`lsp-tool.ts`): On-demand LSP queries (definitions, references, hover, symbols, diagnostics, signatures, rename, and code actions)
 - Manages one LSP server per project root and reuses them across turns
+- Retries failed starts with bounded exponential backoff and terminates detached process groups during cleanup
 - **Efficient**: Bounded memory usage via LRU cache and idle file cleanup
-- Supports TypeScript/JavaScript, Vue, Svelte, Dart/Flutter, Python, Go, Kotlin, Swift, and Rust
+- Supports TypeScript/JavaScript, C/C++, Vue, Svelte, Dart/Flutter, Python, Go, Kotlin, Ruby, Swift, and Rust
 
 ## Supported Languages
 
 | Language | Server | Detection |
 |----------|--------|-----------|
-| TypeScript/JavaScript | `typescript-language-server` | `package.json`, `tsconfig.json` |
+| TypeScript/JavaScript | `typescript-language-server` | `package.json`, `tsconfig.json`, `jsconfig.json` |
+| C/C++ | `clangd --background-index` | nearest `compile_commands.json`, `.clangd`, `CMakeLists.txt` |
+| Ruby | `ruby-lsp` | `Gemfile`, `Gemfile.lock`, `.ruby-version` |
 | Vue | `vue-language-server` | `package.json`, `vite.config.ts` |
 | Svelte | `svelteserver` | `svelte.config.js` |
 | Dart/Flutter | `dart language-server` | `pubspec.yaml` |
@@ -48,6 +51,12 @@ Install the language servers you need:
 # TypeScript/JavaScript
 npm i -g typescript-language-server typescript
 
+# C/C++
+# Install clangd from your platform's LLVM package.
+
+# Ruby (use the ruby-lsp gem in your application bundle)
+gem install ruby-lsp
+
 # Vue
 npm i -g @vue/language-server
 
@@ -60,7 +69,7 @@ npm i -g pyright
 # Go (install gopls via go install)
 go install golang.org/x/tools/gopls@latest
 
-# Kotlin (kotlin-ls)
+# Kotlin (kotlin-lsp; fallback: kotlin-language-server)
 brew install JetBrains/utils/kotlin-lsp
 
 # Swift (sourcekit-lsp; macOS)
@@ -70,6 +79,8 @@ xcrun sourcekit-lsp --help
 # Rust (install via rustup)
 rustup component add rust-analyzer
 ```
+
+Ruby LSP resolution is intentionally explicit and shell-free: `PI_LSP_RUBY_LSP_PATH` may point to a `ruby-lsp` executable, then a project-local `bin/ruby-lsp`, PATH, or `bundle exec ruby-lsp` is tried. The integration tests skip when the executable or a usable bundle is unavailable.
 
 The extension spawns binaries from your PATH.
 
@@ -91,6 +102,7 @@ The `lsp` tool provides these actions:
 
 | Action | Description | Requires |
 |--------|-------------|----------|
+| `health` | Show server health, restart backoff, and last failure | None |
 | `definition` | Jump to definition | `file` + (`line`/`column` or `query`) |
 | `references` | Find all references | `file` + (`line`/`column` or `query`) |
 | `hover` | Get type/docs info | `file` + (`line`/`column` or `query`) |
@@ -98,10 +110,12 @@ The `lsp` tool provides these actions:
 | `diagnostics` | Get single file diagnostics | `file`, optional `severity` filter |
 | `workspace-diagnostics` | Get diagnostics for multiple files | `files` array, optional `severity` filter |
 | `signature` | Get function signature | `file` + (`line`/`column` or `query`) |
-| `rename` | Rename symbol across files | `file` + (`line`/`column` or `query`) + `newName` |
+| `rename` | Return (or optionally apply) a WorkspaceEdit across files | `file` + (`line`/`column` or `query`) + `newName`; optional `apply: true` |
 | `codeAction` | Get available quick fixes/refactors | `file` + `line`/`column`, optional `endLine`/`endColumn` |
 
 **Query resolution**: For position-based actions, you can provide a `query` (symbol name) instead of `line`/`column`. The tool will find the symbol in the file and use its position.
+
+**Rename behavior**: Rename is preview-only by default and returns the server's `WorkspaceEdit`. With `apply: true`, text edits are applied transactionally only to existing files inside the workspace; unsupported resource operations, overlapping edits, and failed writes produce an error.
 
 **Severity filtering**: For `diagnostics` and `workspace-diagnostics` actions, use the `severity` parameter to filter results:
 - `all` (default): Show all diagnostics
@@ -121,7 +135,7 @@ lsp action=workspace-diagnostics files=["src/index.ts", "src/utils.ts"] severity
 ```
 
 Example questions the LLM can answer using this tool:
-- "Where is `handleSessionStart` defined in `lsp-hook.ts`?"
+- "Where is `handleSessionStart` defined in `lsp.ts`?"
 - "Find all references to `getManager`"
 - "What type does `getDefinition` return?"
 - "List symbols in `lsp-core.ts`"
@@ -147,6 +161,35 @@ To disable auto diagnostics, choose "Disabled" in `/lsp` or set in `~/.pi/agent/
 Other values: `"agent_end"` (default) and `"edit_write"`.
 
 Agent-end mode analyzes files touched during the full agent response (after all tool calls complete) and posts a diagnostics message only once. Disabling the hook does not disable the `/lsp` tool.
+
+### Declarative language-server configuration
+
+Optional JSON configuration is read from:
+
+- Global: `${PI_CODING_AGENT_DIR:-~/.pi/agent}/lsp.json`
+- Project: `.pi/lsp.json`
+
+The global file can override builtin servers or add new servers. Commands are launched directly (never through a shell), and must be a bare executable name resolved from `PATH` or an absolute executable path:
+
+```json
+{
+  "servers": {
+    "clangd": { "args": ["--background-index", "--clang-tidy"] },
+    "example-ls": {
+      "command": "example-language-server",
+      "args": ["--stdio"],
+      "extensions": [".example"],
+      "rootMarkers": ["example.toml"],
+      "languageIds": { ".example": "example" },
+      "initializationOptions": { "feature": true }
+    }
+  }
+}
+```
+
+Global fields are `command`, `args`, `extensions`, `rootMarkers`, `languageIds`, `initializationOptions`, `diagnosticsWaitMs`, and `disabled`. New servers require command, nonempty extensions, and nonempty root markers. Project `.pi/lsp.json` is restricted to existing servers and may only set `disabled: true` and `diagnosticsWaitMs`; the latter is clamped to 250–60000 ms. Invalid JSON, unknown keys, oversized files, and prototype-pollution keys are ignored with warnings, while builtin discovery/fallback behavior remains active unless command or args are explicitly overridden.
+
+No servers are installed or downloaded by configuration. Ruby uses the explicit `PI_LSP_RUBY_LSP_PATH`/local-bin/PATH/Bundler resolution described above.
 
 ## File Structure
 

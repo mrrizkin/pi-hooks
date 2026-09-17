@@ -5,6 +5,7 @@
  */
 
 import { classifyCommand, type Classification, type PermissionConfig } from "../permission-core.js";
+import { createInitialState, handleBashToolCall, handleWriteToolCall, type PermissionState } from "../permission.ts";
 
 // ============================================================================
 // Test runner
@@ -1429,6 +1430,64 @@ test("override: empty pattern array", async () => {
   // Should fall through to built-in classification
   const result = classifyCommand("ls", config);
   assertEqual(result.level, "minimal", "empty arrays use built-in");
+});
+
+// ============================================================================
+// Security and permission mode tests
+// ============================================================================
+
+test("security: command injection and shell expansion never remain minimal", async () => {
+  for (const command of [
+    "ls; touch injected",
+    "ls && echo ok > output.txt",
+    "echo $(touch injected)",
+    "echo `touch injected`",
+    "cat input > output",
+    "find . -exec touch injected \\\\;",
+  ]) {
+    const result = classifyCommand(command);
+    assert(result.level !== "minimal", `Unsafe command was classified minimal: ${command}`);
+  }
+  assertEqual(classifyCommand("ls; rm -rf /").dangerous, true, "dangerous command in a chain must remain dangerous");
+});
+
+test("security: shell operators and expansions are fail-closed", async () => {
+  const inputs = ["ls | unknown-tool", "echo ${X:-$(id)}", "echo hi > /tmp/output"];
+  for (const input of inputs) {
+    const result = classifyCommand(input);
+    assert(result.level === "high" || result.level === "low", `Unexpectedly permissive classification: ${input}`);
+  }
+});
+
+test("permission modes: levels and ask/block behavior", async () => {
+  const nonInteractive = { hasUI: false, ui: { notify: () => {} } };
+  for (const level of ["minimal", "low", "medium"] as const) {
+    const state = createInitialState();
+    state.currentLevel = level;
+    const blocked = await handleBashToolCall(state, "git push origin main", nonInteractive);
+    assert(blocked?.block === true, `${level} must block git push in non-interactive mode`);
+  }
+  const high = createInitialState();
+  high.currentLevel = "high";
+  assertEqual(await handleBashToolCall(high, "git push origin main", nonInteractive), undefined, "high allows non-dangerous push");
+
+  const askState = createInitialState();
+  const askCtx = { hasUI: true, ui: { select: async () => "Allow once", notify: () => {}, setStatus: () => {} } };
+  assertEqual(await handleBashToolCall(askState, "npm test", askCtx), undefined, "ask mode can allow once");
+
+  const blockState = createInitialState();
+  blockState.permissionMode = "block";
+  const blockCtx = { hasUI: true, ui: { select: async () => "Allow once", notify: () => {}, setStatus: () => {} } };
+  const blocked = await handleBashToolCall(blockState, "npm test", blockCtx);
+  assert(blocked?.block === true, "block mode must not prompt or allow");
+});
+
+test("permission modes: write boundary is low", async () => {
+  const state = createInitialState();
+  const ctx = { hasUI: false, ui: { notify: () => {} } };
+  assert((await handleWriteToolCall({ state, toolName: "write", filePath: "file.txt", ctx }))?.block === true, "minimal blocks writes");
+  state.currentLevel = "low";
+  assertEqual(await handleWriteToolCall({ state, toolName: "write", filePath: "file.txt", ctx }), undefined, "low allows writes");
 });
 
 // ============================================================================

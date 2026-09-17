@@ -4,6 +4,7 @@
   "description": "Git-based checkpoint extension for pi-coding-agent - creates checkpoints at each turn for code state restoration",
   "type": "module",
   "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
     "test": "npx tsx tests/checkpoint.test.ts"
   },
   "keywords": [

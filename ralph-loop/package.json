@@ -13,6 +13,10 @@
   ],
   "author": "",
   "license": "MIT",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "npx tsx tests/ralph-loop.test.ts"
+  },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "^0.74.0",
     "@earendil-works/pi-ai": "^0.74.0",

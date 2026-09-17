@@ -10,6 +10,8 @@ import { tmpdir } from "os";
 import { join } from "path";
 import {
   git,
+  gitArgs,
+  parseGitArgs,
   getRepoRoot,
   createCheckpoint,
   restoreCheckpoint,
@@ -859,6 +861,36 @@ test("restore: does not delete files added to large directory after checkpoint",
       "New file in large directory should be preserved"
     );
   }));
+
+// ============================================================================
+// Git argv hardening tests
+// ============================================================================
+
+test("git argv: preserves paths without shell interpretation", () =>
+  withTestRepo(async (dir) => {
+    const filename = "literal;touch SHOULD_NOT_EXIST.txt";
+    await writeFile(join(dir, filename), "safe");
+    await gitArgs(["add", "--", filename], dir);
+    assert(!existsSync(join(dir, "SHOULD_NOT_EXIST.txt")), "Git path must not execute shell syntax");
+    assert((await getIndexFiles(dir)).includes(filename), "Literal path should be staged");
+  }));
+
+test("git argv: preserves leading whitespace in NUL-delimited paths", () =>
+  withTestRepo(async (dir, root) => {
+    const filename = " leading space.txt";
+    await writeFile(join(dir, filename), "safe");
+    const cp = await createCheckpoint(root, "whitespace-test", 0, "session-1");
+    await rm(join(dir, filename));
+    await restoreCheckpoint(root, cp);
+    assert(existsSync(join(dir, filename)), "Whitespace-prefixed path should survive checkpoint restore");
+  }));
+
+test("git command parser: handles whitespace and rejects malformed input", async () => {
+  assertArrayEquals(parseGitArgs("git   add\t--\t'file with spaces'"), ["git", "add", "--", "file with spaces"], "Parser should preserve argv boundaries");
+  let rejected = false;
+  try { parseGitArgs("git add 'unterminated"); } catch { rejected = true; }
+  assert(rejected, "Malformed command strings must be rejected");
+});
 
 // ============================================================================
 // Run tests

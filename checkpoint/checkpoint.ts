@@ -26,6 +26,7 @@ import {
   isSafeId,
   type CheckpointData,
 } from "./checkpoint-core.js";
+import { numberedSelect } from "./ui.js";
 
 // ============================================================================
 // Minimal local types (avoid hard dependency on pi-coding-agent types)
@@ -53,6 +54,7 @@ interface SessionManager {
 
 interface ExtensionUI {
   select(title: string, options: string[]): Promise<string>;
+  custom?<T>(factory: (tui: any, theme: any, keybindings: any, done: (result: T) => void) => any): Promise<T>;
   notify(message: string, type: "info" | "error" | "warning"): void;
 }
 
@@ -388,7 +390,8 @@ async function handleRestorePrompt(
     ? new Date(targetEntry.timestamp).getTime()
     : Date.now();
 
-  const choice = await ctx.ui.select(
+  const choice = await numberedSelect(
+    ctx,
     "Restore code state?",
     restoreOptions.map((o) => o.label)
   );

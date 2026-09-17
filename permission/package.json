@@ -4,6 +4,7 @@
   "description": "Layered permission control extension for pi-coding-agent",
   "type": "module",
   "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
     "test": "npx tsx tests/permission.test.ts"
   },
   "keywords": [

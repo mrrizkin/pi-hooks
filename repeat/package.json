@@ -10,12 +10,16 @@
     "pi-package"
   ],
   "license": "MIT",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.74.0",
     "@earendil-works/pi-tui": "^0.74.0"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.74.0",
+    "typescript": "^5.9.3",
     "@earendil-works/pi-tui": "^0.74.0"
   },
   "pi": {

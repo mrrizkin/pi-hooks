@@ -9,7 +9,7 @@ import { spawn } from "child_process";
 import { mkdtemp, rm } from "fs/promises";
 import { statSync, readdirSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { join, isAbsolute } from "path";
 
 // ============================================================================
 // Constants & Types
@@ -68,107 +68,132 @@ export interface CheckpointData {
  * Parse a command string into arguments, handling quotes.
  * This avoids shell injection by not using shell execution.
  */
-function parseArgs(cmd: string): string[] {
+export function parseGitArgs(cmd: string): string[] {
   const args: string[] = [];
   let current = "";
-  let inSingleQuote = false;
-  let inDoubleQuote = false;
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+  let started = false;
 
-  for (let i = 0; i < cmd.length; i++) {
-    const char = cmd[i];
-
-    if (char === "'" && !inDoubleQuote) {
-      inSingleQuote = !inSingleQuote;
-    } else if (char === '"' && !inSingleQuote) {
-      inDoubleQuote = !inDoubleQuote;
-    } else if (char === " " && !inSingleQuote && !inDoubleQuote) {
-      if (current) {
+  for (const char of cmd) {
+    if (escaped) {
+      current += char;
+      escaped = false;
+      started = true;
+      continue;
+    }
+    if (char === "\\" && quote !== "'") {
+      escaped = true;
+      started = true;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) quote = null;
+      else current += char;
+      started = true;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      started = true;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      if (started) {
         args.push(current);
         current = "";
+        started = false;
       }
-    } else {
-      current += char;
+      continue;
     }
+    current += char;
+    started = true;
   }
-  if (current) args.push(current);
 
+  if (escaped || quote) throw new Error("Malformed git command: unterminated quote or escape");
+  if (started) args.push(current);
   return args;
 }
 
-export function git(
-  cmd: string,
-  cwd: string,
-  opts: { env?: NodeJS.ProcessEnv; input?: string } = {}
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const args = parseArgs(cmd);
+interface GitOptions {
+  env?: NodeJS.ProcessEnv;
+  input?: string;
+  /** Preserve output whitespace for NUL-delimited Git commands. */
+  trimOutput?: boolean;
+}
 
-    const proc = spawn("git", args, {
-      cwd,
-      env: opts.env,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+function runGit(args: string[], cwd: string, opts: GitOptions = {}): Promise<string> {
+  if (args.length === 0 || args.some((arg) => arg.includes("\0"))) {
+    return Promise.reject(new Error("Invalid git arguments"));
+  }
+
+  return new Promise((resolve, reject) => {
+    let proc;
+    try {
+      proc = spawn("git", args, {
+        cwd,
+        env: opts.env,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+    } catch (error) {
+      reject(error);
+      return;
+    }
 
     let stdout = "";
     let stderr = "";
-
-    proc.stdout.on("data", (data) => {
-      stdout += data;
+    proc.stdout.on("data", (data: Buffer) => { stdout += data.toString(); });
+    proc.stderr.on("data", (data: Buffer) => { stderr += data.toString(); });
+    proc.on("close", (code: number | null) => {
+      if (code === 0) resolve(opts.trimOutput === false ? stdout : stdout.trim());
+      else reject(new Error(stderr.trim() || `git ${args.join(" ")} failed with code ${code}`));
     });
-
-    proc.stderr.on("data", (data) => {
-      stderr += data;
-    });
-
-    proc.on("close", (code) => {
-      if (code === 0) {
-        resolve(stdout.trim());
-      } else {
-        reject(new Error(stderr || `git ${cmd} failed with code ${code}`));
-      }
-    });
-
     proc.on("error", reject);
 
-    if (opts.input && proc.stdin) {
-      proc.stdin.write(opts.input);
-      proc.stdin.end();
-    } else if (proc.stdin) {
-      proc.stdin.end();
-    }
+    if (opts.input !== undefined) proc.stdin.end(opts.input);
+    else proc.stdin.end();
   });
 }
 
-/** Low-priority git command using spawn (doesn't block shell) */
-export function gitLowPriority(cmd: string, cwd: string): Promise<string> {
+/** Execute git with an explicit argv array. Dynamic paths must use this API. */
+export function gitArgs(args: string[], cwd: string, opts: GitOptions = {}): Promise<string> {
+  return runGit(args, cwd, opts);
+}
+
+/**
+ * Execute a static git command string. This compatibility wrapper does not use a shell;
+ * callers handling dynamic values should use gitArgs instead.
+ */
+export function git(cmd: string, cwd: string, opts: GitOptions = {}): Promise<string> {
+  return runGit(parseGitArgs(cmd), cwd, opts);
+}
+
+export function gitLowPriorityArgs(args: string[], cwd: string): Promise<string> {
+  if (args.length === 0 || args.some((arg) => arg.includes("\0"))) {
+    return Promise.reject(new Error("Invalid git arguments"));
+  }
   return new Promise((resolve, reject) => {
-    const args = parseArgs(cmd);
-
-    const proc = spawn("git", args, {
-      cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
+    let proc;
+    try {
+      proc = spawn("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    } catch (error) {
+      reject(error);
+      return;
+    }
     let stdout = "";
     let stderr = "";
-
-    proc.stdout.on("data", (data) => {
-      stdout += data;
+    proc.stdout.on("data", (data: Buffer) => { stdout += data.toString(); });
+    proc.stderr.on("data", (data: Buffer) => { stderr += data.toString(); });
+    proc.on("close", (code: number | null) => {
+      if (code === 0) resolve(stdout.trim());
+      else reject(new Error(stderr.trim() || `git ${args.join(" ")} failed with code ${code}`));
     });
-    proc.stderr.on("data", (data) => {
-      stderr += data;
-    });
-
-    proc.on("close", (code) => {
-      if (code === 0) {
-        resolve(stdout.trim());
-      } else {
-        reject(new Error(stderr || `git ${cmd} failed with code ${code}`));
-      }
-    });
-
     proc.on("error", reject);
   });
+}
+
+export function gitLowPriority(cmd: string, cwd: string): Promise<string> {
+  return gitLowPriorityArgs(parseGitArgs(cmd), cwd);
 }
 
 export const isGitRepo = (cwd: string) =>
@@ -377,9 +402,9 @@ async function getUntrackedFiles(
   try {
     // Get untracked files (respects .gitignore)
     // Don't pass custom env - we want to use the real index
-    const output = await git("ls-files --others --exclude-standard", root);
+    const output = await gitArgs(["ls-files", "--others", "--exclude-standard", "-z"], root, { trimOutput: false });
     if (!output) return [];
-    return output.split("\n").filter(Boolean);
+    return output.split("\0").filter(Boolean);
   } catch {
     return [];
   }
@@ -549,6 +574,8 @@ export async function createCheckpoint(
   turnIndex: number,
   sessionId: string
 ): Promise<CheckpointData> {
+  if (!isSafeId(id)) throw new Error("Checkpoint id contains unsafe characters");
+
   const timestamp = Date.now();
   const isoTimestamp = new Date(timestamp).toISOString();
 
@@ -579,7 +606,7 @@ export async function createCheckpoint(
 
     // Start with tracked files from HEAD (if it exists)
     if (headSha !== ZEROS) {
-      await git(`read-tree ${headSha}`, root, { env: tmpEnv });
+      await gitArgs(["read-tree", headSha], root, { env: tmpEnv });
     }
 
     // Add filtered files to the temporary index
@@ -589,8 +616,7 @@ export async function createCheckpoint(
       for (let i = 0; i < filesToAdd.length; i += BATCH_SIZE) {
         const batch = filesToAdd.slice(i, i + BATCH_SIZE);
         // Use -- to separate paths from options
-        const pathArgs = batch.map((f) => `"${f}"`).join(" ");
-        await git(`add --all -- ${pathArgs}`, root, { env: tmpEnv });
+        await gitArgs(["add", "--all", "--", ...batch], root, { env: tmpEnv });
       }
     }
 
@@ -624,12 +650,12 @@ export async function createCheckpoint(
       GIT_COMMITTER_DATE: isoTimestamp,
     };
 
-    const commitSha = await git(`commit-tree ${worktreeTreeSha}`, root, {
+    const commitSha = await gitArgs(["commit-tree", worktreeTreeSha], root, {
       input: message,
       env: commitEnv,
     });
 
-    await git(`update-ref ${REF_BASE}/${id} ${commitSha}`, root);
+    await gitArgs(["update-ref", `${REF_BASE}/${id}`, commitSha], root);
 
     return {
       id,
@@ -652,13 +678,18 @@ export async function restoreCheckpoint(
   root: string,
   cp: CheckpointData
 ): Promise<void> {
+  const objectIds = [cp.headSha, cp.indexTreeSha, cp.worktreeTreeSha];
+  if (objectIds.some((sha) => !/^[0-9a-f]{40}$/i.test(sha))) {
+    throw new Error("Checkpoint contains an invalid Git object id");
+  }
+
   // 1. Restore HEAD state
   if (cp.headSha !== ZEROS) {
-    await git(`reset --hard ${cp.headSha}`, root);
+    await gitArgs(["reset", "--hard", cp.headSha], root);
   }
 
   // 2. Update index AND working tree to match saved worktree snapshot
-  await git(`read-tree --reset -u ${cp.worktreeTreeSha}`, root);
+  await gitArgs(["read-tree", "--reset", "-u", cp.worktreeTreeSha], root);
 
   // 3. Safely remove untracked files - only remove NEW files, not pre-existing ones
   //    Also preserve large files and directories that were skipped during snapshot
@@ -670,7 +701,7 @@ export async function restoreCheckpoint(
   );
 
   // 4. Restore the index (staged state) without touching files
-  await git(`read-tree --reset ${cp.indexTreeSha}`, root);
+  await gitArgs(["read-tree", "--reset", cp.indexTreeSha], root);
 }
 
 /**
@@ -718,38 +749,15 @@ async function safeCleanUntrackedFiles(
   const BATCH_SIZE = 100;
   for (let i = 0; i < filesToRemove.length; i += BATCH_SIZE) {
     const batch = filesToRemove.slice(i, i + BATCH_SIZE);
-    const pathArgs = batch.map((f) => `"${f}"`).join(" ");
-    // Use git clean with specific paths instead of -fd on everything
-    await git(`clean -f -- ${pathArgs}`, root).catch(() => {
-      // If batch fails, try individual files
+    // Use git clean with specific argv paths instead of interpolated command text.
+    await gitArgs(["clean", "-f", "--", ...batch], root).catch(() => {
+      // A failed cleanup must not make restoring the checkpoint fail.
     });
   }
 
-  // Also clean empty directories that may have been left behind
-  // But only if they're not in ignored paths, skipped large directories, or skipped large files
-  await git("clean -fd --dry-run", root)
-    .then(async (output) => {
-      const pathsToClean = output
-        .split("\n")
-        .filter((line) => line.startsWith("Would remove "))
-        .map((line) => line.replace("Would remove ", "").replace(/\/$/, ""))
-        .filter((path) => {
-          if (shouldIgnoreForSnapshot(path)) return false;
-          // Don't clean skipped large files
-          if (skippedLargeFilesSet.has(path)) return false;
-          // Don't clean skipped large directories (or anything inside/above them)
-          if (isPathWithinAnyDir(path, skippedLargeDirsSet)) return false;
-          if (isPathAncestorOfAnyDir(path, skippedLargeDirsSet)) return false;
-          return true;
-        });
-
-      if (pathsToClean.length > 0) {
-        for (const path of pathsToClean) {
-          await git(`clean -fd -- "${path}"`, root).catch(() => {});
-        }
-      }
-    })
-    .catch(() => {});
+  // Do not run a second repository-wide clean pass here. Its human-readable output
+  // is ambiguous for filenames containing newlines/spaces, and empty directories
+  // are harmless (Git does not track them).
 }
 
 export async function loadCheckpointFromRef(
@@ -758,12 +766,11 @@ export async function loadCheckpointFromRef(
   lowPriority = false
 ): Promise<CheckpointData | null> {
   try {
-    const gitFn = lowPriority ? gitLowPriority : git;
-    const commitSha = await gitFn(
-      `rev-parse --verify ${REF_BASE}/${refName}`,
-      root
-    );
-    const commitMsg = await gitFn(`cat-file commit ${commitSha}`, root);
+    if (!isSafeId(refName)) return null;
+    const gitFn = lowPriority ? gitLowPriorityArgs : gitArgs;
+    const commitSha = await gitFn(["rev-parse", "--verify", `${REF_BASE}/${refName}`], root);
+    if (!/^[0-9a-f]{40}$/i.test(commitSha)) return null;
+    const commitMsg = await gitFn(["cat-file", "commit", commitSha], root);
 
     const get = (key: string) =>
       commitMsg.match(new RegExp(`^${key} (.+)$`, "m"))?.[1]?.trim();
@@ -779,38 +786,28 @@ export async function loadCheckpointFromRef(
     const largeDirsJson = get("largeDirs");
 
     if (!sessionId || !turn || !head || !index || !worktree) return null;
+    if (![head, index, worktree].every((sha) => /^[0-9a-f]{40}$/i.test(sha))) return null;
 
-    // Parse pre-existing untracked files from JSON (if present)
-    let preexistingUntrackedFiles: string[] | undefined;
-    if (untrackedJson) {
+    const parsePathList = (raw: string | undefined): string[] | undefined => {
+      if (!raw) return undefined;
       try {
-        preexistingUntrackedFiles = JSON.parse(untrackedJson);
+        const parsed: unknown = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return undefined;
+        const safe = parsed.filter((value): value is string => {
+          if (typeof value !== "string" || !value || value.includes("\0")) return false;
+          const normalized = normalizeGitPath(value);
+          return normalized !== ".." && !normalized.startsWith("../") && !isAbsolute(normalized);
+        });
+        return safe.length > 0 ? safe : undefined;
       } catch {
         // Ignore parse errors for backwards compatibility
+        return undefined;
       }
-    }
+    };
 
-    // Parse skipped large files from JSON (if present)
-    let skippedLargeFiles: string[] | undefined;
-    if (largeFilesJson) {
-      try {
-        const parsed = JSON.parse(largeFilesJson);
-        if (parsed.length > 0) skippedLargeFiles = parsed;
-      } catch {
-        // Ignore parse errors for backwards compatibility
-      }
-    }
-
-    // Parse skipped large directories from JSON (if present)
-    let skippedLargeDirs: string[] | undefined;
-    if (largeDirsJson) {
-      try {
-        const parsed = JSON.parse(largeDirsJson);
-        if (parsed.length > 0) skippedLargeDirs = parsed;
-      } catch {
-        // Ignore parse errors for backwards compatibility
-      }
-    }
+    const preexistingUntrackedFiles = parsePathList(untrackedJson);
+    const skippedLargeFiles = parsePathList(largeFilesJson);
+    const skippedLargeDirs = parsePathList(largeDirsJson);
 
     return {
       id: refName,
@@ -835,9 +832,9 @@ export async function listCheckpointRefs(
 ): Promise<string[]> {
   try {
     const prefix = `${REF_BASE}/`;
-    const gitFn = lowPriority ? gitLowPriority : git;
+    const gitFn = lowPriority ? gitLowPriorityArgs : gitArgs;
     const stdout = await gitFn(
-      `for-each-ref --format="%(refname)" ${prefix}`,
+      ["for-each-ref", "--format=%(refname)", prefix],
       root
     );
     return stdout

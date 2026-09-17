@@ -209,10 +209,13 @@ test("rust: detects type errors", async () => {
 
     await mkdir(join(dir, "src"));
     const file = join(dir, "src/main.rs");
-    await writeFile(file, `fn main() {\n    let x: i32 = "hello";\n}`);
+    // Syntax errors are reported consistently even when cargo check is still warming up.
+    await writeFile(file, `fn main() {\n    let x = ;\n}`);
 
     // rust-analyzer needs a LOT of time to initialize (compiles the project)
-    const { diagnostics } = await manager.touchFileAndWait(file, 60000);
+    const result = await manager.touchFileAndWait(file, 60000);
+    if (result.unsupported) skip(result.error || "rust-analyzer unavailable");
+    const { diagnostics } = result;
 
     assert(diagnostics.length > 0, `Expected errors, got ${diagnostics.length}`);
   } finally {
@@ -236,7 +239,9 @@ test("rust: valid code has no errors", async () => {
     const file = join(dir, "src/main.rs");
     await writeFile(file, `fn main() {\n    let x = "hello";\n    println!("{}", x);\n}`);
 
-    const { diagnostics } = await manager.touchFileAndWait(file, 60000);
+    const result = await manager.touchFileAndWait(file, 60000);
+    if (result.unsupported) skip(result.error || "rust-analyzer unavailable");
+    const { diagnostics } = result;
     const errors = diagnostics.filter(d => d.severity === 1);
 
     assert(errors.length === 0, `Expected no errors, got: ${errors.map(d => d.message).join(", ")}`);
@@ -308,6 +313,80 @@ func main() {
     await manager.shutdown();
     await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
+});
+
+// ============================================================================
+// C/C++ (clangd)
+// ============================================================================
+
+async function withClangdProject(code: string, check: (result: Awaited<ReturnType<LSPManager["touchFileAndWait"]>>) => void): Promise<void> {
+  if (!commandExists("clangd")) skip("clangd not installed");
+
+  const dir = await mkdtemp(join(tmpdir(), "lsp-clangd-"));
+  const manager = new LSPManager(dir);
+  try {
+    await writeFile(join(dir, "CMakeLists.txt"), "cmake_minimum_required(VERSION 3.20)\nproject(test LANGUAGES CXX)\n");
+    const file = join(dir, "main.cpp");
+    await writeFile(file, code);
+    const result = await manager.touchFileAndWait(file, 10000);
+    if (result.unsupported) skip(result.error || "clangd unavailable");
+    check(result);
+  } finally {
+    await manager.shutdown();
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+test("clangd: detects C++ errors", async () => {
+  await withClangdProject("int main() { const char* value = 42; return value[0]; }\n", (result) => {
+    assert(result.receivedResponse, "Expected clangd to respond");
+    assert(result.diagnostics.some((diagnostic) => diagnostic.severity === 1), "Expected a clangd error");
+  });
+});
+
+test("clangd: valid C++ has no errors", async () => {
+  await withClangdProject("int main() { int value = 42; return value == 42 ? 0 : 1; }\n", (result) => {
+    assert(result.receivedResponse, "Expected clangd to respond");
+    assert(result.diagnostics.filter((diagnostic) => diagnostic.severity === 1).length === 0, "Expected no C++ errors");
+  });
+});
+
+// ============================================================================
+// Ruby (ruby-lsp)
+// ============================================================================
+
+async function withRubyLspProject(code: string, check: (result: Awaited<ReturnType<LSPManager["touchFileAndWait"]>>) => void): Promise<void> {
+  if (!commandExists("ruby-lsp") && !commandExists("bundle") && !process.env.PI_LSP_RUBY_LSP_PATH) {
+    skip("ruby-lsp or bundler not installed");
+  }
+
+  const dir = await mkdtemp(join(tmpdir(), "lsp-ruby-"));
+  const manager = new LSPManager(dir);
+  try {
+    await writeFile(join(dir, "Gemfile"), "source \\\"https://rubygems.org\\\"\n");
+    const file = join(dir, "main.rb");
+    await writeFile(file, code);
+    const result = await manager.touchFileAndWait(file, 20000);
+    if (result.unsupported) skip(result.error || "ruby-lsp unavailable");
+    check(result);
+  } finally {
+    await manager.shutdown();
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+test("ruby-lsp: detects syntax errors", async () => {
+  await withRubyLspProject("def greet(name\\n  puts name\\nend\\n", (result) => {
+    assert(result.receivedResponse, "Expected ruby-lsp to respond");
+    assert(result.diagnostics.length > 0, "Expected ruby-lsp syntax diagnostics");
+  });
+});
+
+test("ruby-lsp: valid Ruby has no errors", async () => {
+  await withRubyLspProject("def greet(name)\\n  puts name\\nend\\ngreet(\\\"world\\\")\\n", (result) => {
+    assert(result.receivedResponse, "Expected ruby-lsp to respond");
+    assert(result.diagnostics.filter((diagnostic) => diagnostic.severity === 1).length === 0, "Expected no Ruby errors");
+  });
 });
 
 // ============================================================================

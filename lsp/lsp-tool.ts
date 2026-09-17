@@ -16,6 +16,8 @@
  *   - Kotlin (kotlin-ls)
  *   - Swift (sourcekit-lsp)
  *   - Rust (rust-analyzer)
+ *   - Ruby (ruby-lsp)
+ *   - C/C++ (clangd)
  *
  * Usage:
  *   pi --extension ./lsp-tool.ts
@@ -27,21 +29,11 @@ import * as path from "node:path";
 import { StringEnum, Type, type Static } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { getOrCreateManager, formatDiagnostic, filterDiagnosticsBySeverity, uriToPath, resolvePosition, collectSymbols, type SeverityFilter } from "./lsp-core.js";
+import { getOrCreateManager, formatDiagnostic, filterDiagnosticsBySeverity, uriToPath, resolvePosition, collectSymbols, applyWorkspaceEdit, type SeverityFilter } from "./lsp-core.js";
 
 const PREVIEW_LINES = 10;
 
-const DIAGNOSTICS_WAIT_MS_DEFAULT = 3000;
-
-function diagnosticsWaitMsForFile(filePath: string): number {
-  const ext = path.extname(filePath).toLowerCase();
-  if (ext === ".kt" || ext === ".kts") return 30000;
-  if (ext === ".swift") return 20000;
-  if (ext === ".rs") return 20000;
-  return DIAGNOSTICS_WAIT_MS_DEFAULT;
-}
-
-const ACTIONS = ["definition", "references", "hover", "symbols", "diagnostics", "workspace-diagnostics", "signature", "rename", "codeAction"] as const;
+const ACTIONS = ["health", "definition", "references", "hover", "symbols", "diagnostics", "workspace-diagnostics", "signature", "rename", "codeAction"] as const;
 const SEVERITY_FILTERS = ["all", "error", "warning", "info", "hint"] as const;
 
 const LspParams = Type.Object({
@@ -54,6 +46,7 @@ const LspParams = Type.Object({
   endColumn: Type.Optional(Type.Number({ description: "End column for range-based actions (codeAction)" })),
   query: Type.Optional(Type.String({ description: "Symbol name filter (for symbols) or to resolve position (for definition/references/hover/signature)" })),
   newName: Type.Optional(Type.String({ description: "New name for rename action" })),
+  apply: Type.Optional(Type.Boolean({ description: "Apply rename WorkspaceEdit to files (default: false)" })),
   severity: Type.Optional(StringEnum(SEVERITY_FILTERS, { description: 'Filter diagnostics: "all"|"error"|"warning"|"info"|"hint"' })),
 });
 
@@ -213,7 +206,7 @@ export default function (pi: ExtensionAPI) {
     label: "LSP",
     description: `Query language server for definitions, references, types, symbols, diagnostics, rename, and code actions.
 
-Actions: definition, references, hover, signature, rename (require file + line/column or query), symbols (file, optional query), diagnostics (file), workspace-diagnostics (files array), codeAction (file + position).
+Actions: health, definition, references, hover, signature, rename (require file + line/column or query), symbols (file, optional query), diagnostics (file), workspace-diagnostics (files array), codeAction (file + position). Rename returns a WorkspaceEdit preview by default; set apply=true to apply text edits inside the workspace.
 Use bash to find files: find src -name "*.ts" -type f`,
     parameters: LspParams,
 
@@ -221,9 +214,9 @@ Use bash to find files: find src -name "*.ts" -type f`,
       const { signal, onUpdate, ctx } = normalizeExecuteArgs(onUpdateArg, ctxArg, signalArg);
       if (signal?.aborted) return cancelledToolResult();
       const manager = getOrCreateManager(ctx.cwd);
-      const { action, file, files, line, column, endLine, endColumn, query, newName, severity } = params as LspParamsType;
+      const { action, file, files, line, column, endLine, endColumn, query, newName, apply, severity } = params as LspParamsType;
       const sevFilter: SeverityFilter = severity || "all";
-      const needsFile = action !== "workspace-diagnostics";
+      const needsFile = action !== "workspace-diagnostics" && action !== "health";
       const needsPos = ["definition", "references", "hover", "signature", "rename", "codeAction"].includes(action);
 
       try {
@@ -243,6 +236,16 @@ Use bash to find files: find src -name "*.ts" -type f`,
         const posLine = fromQuery && rLine && rCol ? `resolvedPosition: ${rLine}:${rCol}\n` : "";
 
         switch (action) {
+          case "health": {
+            const health = manager.getHealth();
+            const payload = health.length
+              ? health.map((item) => {
+                const retry = item.retryAt ? ` retryAt=${new Date(item.retryAt).toISOString()}` : "";
+                return `${item.server} [${item.status}] ${item.root}${retry}${item.error ? `: ${item.error}` : ""}`;
+              }).join("\n")
+              : "No language servers have been started.";
+            return { content: [{ type: "text", text: `action: health\n${payload}` }], details: health };
+          }
           case "definition": {
             const results = await abortable(manager.getDefinition(file!, rLine!, rCol!), signal);
             const locs = results.map(l => formatLocation(l, ctx?.cwd));
@@ -266,7 +269,7 @@ Use bash to find files: find src -name "*.ts" -type f`,
             return { content: [{ type: "text", text: `action: symbols\n${qLine}${payload}` }], details: symbols };
           }
           case "diagnostics": {
-            const result = await abortable(manager.touchFileAndWait(file!, diagnosticsWaitMsForFile(file!)), signal);
+            const result = await abortable(manager.touchFileAndWait(file!, manager.diagnosticsWaitMsForFile(file!)), signal);
             const filtered = filterDiagnosticsBySeverity(result.diagnostics, sevFilter);
             const payload = (result as any).unsupported
               ? `Unsupported: ${(result as any).error || "No LSP for this file."}`
@@ -277,7 +280,7 @@ Use bash to find files: find src -name "*.ts" -type f`,
           }
           case "workspace-diagnostics": {
             if (!files?.length) throw new Error('Action "workspace-diagnostics" requires a "files" array.');
-            const waitMs = Math.max(...files.map(diagnosticsWaitMsForFile));
+            const waitMs = Math.max(...files.map((item) => manager.diagnosticsWaitMsForFile(item)));
             const result = await abortable(manager.getDiagnosticsForFiles(files, waitMs), signal);
             const out: string[] = [];
             let errors = 0, warnings = 0, filesWithIssues = 0;
@@ -307,8 +310,13 @@ Use bash to find files: find src -name "*.ts" -type f`,
             if (!newName) throw new Error('Action "rename" requires a "newName" parameter.');
             const result = await abortable(manager.rename(file!, rLine!, rCol!, newName), signal);
             if (!result) return { content: [{ type: "text", text: `action: rename\n${qLine}${posLine}No rename available at this position.` }], details: null };
+            let applyLine = "";
+            if (apply) {
+              const count = applyWorkspaceEdit(result, ctx.cwd);
+              applyLine = `Applied ${count} edit(s).\n\n`;
+            }
             const edits = formatWorkspaceEdit(result, ctx?.cwd);
-            return { content: [{ type: "text", text: `action: rename\n${qLine}${posLine}newName: ${newName}\n\n${edits}` }], details: result };
+            return { content: [{ type: "text", text: `action: rename\n${qLine}${posLine}newName: ${newName}\n\n${applyLine}${edits}` }], details: result };
           }
           case "codeAction": {
             const result = await abortable(manager.getCodeActions(file!, rLine!, rCol!, endLine, endColumn), signal);

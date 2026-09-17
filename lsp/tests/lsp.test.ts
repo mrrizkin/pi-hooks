@@ -113,6 +113,17 @@ test("LANGUAGE_IDS: Python extensions", async () => {
   assertEquals(LANGUAGE_IDS[".pyi"], "python", ".pyi should map to python");
 });
 
+test("LANGUAGE_IDS: Ruby and C/C++ extensions", async () => {
+  for (const ext of [".rb", ".rake", ".gemspec", ".ru"]) {
+    assertEquals(LANGUAGE_IDS[ext], "ruby", `${ext} should map to ruby`);
+  }
+  assertEquals(LANGUAGE_IDS[".c"], "c", ".c should map to c");
+  assertEquals(LANGUAGE_IDS[".h"], "c", ".h should map to c");
+  for (const ext of [".cc", ".cpp", ".cxx", ".hpp", ".hxx"]) {
+    assertEquals(LANGUAGE_IDS[ext], "cpp", `${ext} should map to cpp`);
+  }
+});
+
 test("LANGUAGE_IDS: Vue/Svelte/Astro extensions", async () => {
   assertEquals(LANGUAGE_IDS[".vue"], "vue", ".vue should map to vue");
   assertEquals(LANGUAGE_IDS[".svelte"], "svelte", ".svelte should map to svelte");
@@ -168,6 +179,45 @@ test("LSP_SERVERS: has Pyright server", async () => {
   assert(server !== undefined, "Should have pyright server");
   assertIncludes(server!.extensions, ".py", "Should handle .py");
   assertIncludes(server!.extensions, ".pyi", "Should handle .pyi");
+});
+
+test("LSP_SERVERS: has Ruby LSP and clangd", async () => {
+  const ruby = LSP_SERVERS.find(s => s.id === "ruby");
+  assert(ruby !== undefined, "Should have ruby server");
+  assertIncludes(ruby!.extensions, ".rb", "Ruby should handle .rb");
+  assertEquals(ruby!.command, "ruby-lsp", "Ruby should use ruby-lsp");
+
+  const clangd = LSP_SERVERS.find(s => s.id === "clangd");
+  assert(clangd !== undefined, "Should have clangd server");
+  for (const ext of [".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hxx"]) {
+    assertIncludes(clangd!.extensions, ext, `clangd should handle ${ext}`);
+  }
+  assertIncludes(clangd!.args, "--background-index", "clangd should enable background indexing");
+});
+
+// ============================================================================
+// Ruby and clangd root detection tests
+// ============================================================================
+
+test("ruby: finds Gemfile root", async () => {
+  await withTempDir({
+    "Gemfile": "source \\\"https://rubygems.org\\\"",
+    "lib/main.rb": "puts \\\"ok\\\"",
+  }, async (dir) => {
+    const server = LSP_SERVERS.find(s => s.id === "ruby")!;
+    assertEquals(server.findRoot(join(dir, "lib/main.rb"), dir), dir, "Should find Ruby project root");
+  });
+});
+
+test("clangd: finds nearest compilation/root marker", async () => {
+  await withTempDir({
+    "CMakeLists.txt": "project(root)",
+    "native/compile_commands.json": "[]",
+    "native/src/main.cpp": "int main() {}",
+  }, async (dir) => {
+    const server = LSP_SERVERS.find(s => s.id === "clangd")!;
+    assertEquals(server.findRoot(join(dir, "native/src/main.cpp"), dir), join(dir, "native"), "Should prefer nearest compilation database");
+  });
 });
 
 // ============================================================================

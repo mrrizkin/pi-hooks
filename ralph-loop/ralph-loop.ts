@@ -411,6 +411,33 @@ function isProcessActive(proc: any): boolean {
 	return Boolean(proc && proc.exitCode === null);
 }
 
+export function resolveRpcExitCode(code: number | null, sawAgentEnd: boolean, aborted: boolean): number {
+	const normalized = code ?? 1;
+	return !sawAgentEnd && !aborted && normalized === 0 ? 1 : normalized;
+}
+
+export function parseRpcLine(line: string): Record<string, any> | null {
+	if (!line.trim()) return null;
+	try {
+		const parsed = JSON.parse(line);
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+	} catch {
+		// Child-process logs are intentionally ignored; only valid RPC objects
+		// can affect the loop result.
+		return null;
+	}
+}
+
+function terminateSubagent(proc: any, signal: "SIGTERM" | "SIGKILL" = "SIGTERM"): void {
+	if (!isProcessActive(proc)) return;
+	try {
+		if (process.platform !== "win32" && proc.pid) process.kill(-proc.pid, signal);
+		else proc.kill(signal);
+	} catch {
+		try { proc.kill(signal); } catch { /* already exited */ }
+	}
+}
+
 function pauseActiveRuns(control: LoopControlState, runs: Set<ActiveRun>): boolean {
 	if (control.paused) return runs.size > 0;
 	let paused = false;
@@ -600,9 +627,12 @@ async function runSingleAgent(
 			const env = agent.permissionLevel
 				? { ...process.env, PI_PERMISSION_LEVEL: agent.permissionLevel }
 				: process.env;
-			const proc = spawn("pi", args, { cwd: cwd ?? defaultCwd, shell: false, stdio: ["pipe", "pipe", "pipe"], env });
+			const proc = spawn("pi", args, { cwd: cwd ?? defaultCwd, shell: false, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"], env });
 			let buffer = "";
 			let resolved = false;
+			let processClosed = false;
+			let sawAgentEnd = false;
+			let abortHandler: (() => void) | null = null;
 			let unregisterActive: (() => void) | null = null;
 			let requestId = 0;
 			const pending = new Map<string, { resolve: (response: any) => void; reject: (error: Error) => void }>();
@@ -636,12 +666,13 @@ async function runSingleAgent(
 				if (resolved) return;
 				resolved = true;
 				if (unregisterActive) unregisterActive();
+				if (abortHandler && signal) signal.removeEventListener("abort", abortHandler);
 				resolve(code);
 			};
 
 			const sendCommand = (command: any) =>
 				new Promise<any>((resolveCommand, rejectCommand) => {
-					if (stdinClosed || proc.exitCode !== null || proc.stdin?.destroyed) {
+					if (processClosed || stdinClosed || proc.exitCode !== null || proc.stdin?.destroyed) {
 						rejectCommand(new Error("RPC process is not available"));
 						return;
 					}
@@ -711,10 +742,10 @@ async function runSingleAgent(
 				}
 				if (resolved) return;
 				resolveOnce(0);
-				proc.kill("SIGTERM");
+				terminateSubagent(proc, "SIGTERM");
 				setTimeout(() => {
-					if (!proc.killed) proc.kill("SIGKILL");
-				}, 2000);
+					if (isProcessActive(proc)) terminateSubagent(proc, "SIGKILL");
+				}, 2000).unref?.();
 			};
 
 			const upsertToolResult = (
@@ -788,6 +819,7 @@ async function runSingleAgent(
 				}
 
 				if (event.type === "agent_end") {
+					sawAgentEnd = true;
 					if (Array.isArray(event.messages)) {
 						currentResult.messages = event.messages as Message[];
 					}
@@ -798,12 +830,8 @@ async function runSingleAgent(
 
 			const processLine = (line: string) => {
 				if (!line.trim()) return;
-				let event: any;
-				try {
-					event = JSON.parse(line);
-				} catch {
-					return;
-				}
+				const event = parseRpcLine(line);
+				if (!event) return;
 
 				if (event.type === "response" && handleResponse(event)) {
 					return;
@@ -813,6 +841,7 @@ async function runSingleAgent(
 			};
 
 			proc.stdout.on("data", (data) => {
+				if (processClosed) return;
 				buffer += data.toString();
 				const lines = buffer.split("\n");
 				buffer = lines.pop() || "";
@@ -820,31 +849,39 @@ async function runSingleAgent(
 			});
 
 			proc.stderr.on("data", (data) => {
-				currentResult.stderr += data.toString();
+				const next = currentResult.stderr + data.toString();
+				currentResult.stderr = next.length > 1_000_000 ? next.slice(-1_000_000) : next;
 			});
 
 			proc.on("close", (code) => {
+				processClosed = true;
 				if (buffer.trim()) processLine(buffer);
 				markStdinClosed(new Error("process closed"));
-				resolveOnce(code ?? 0);
+				const exitCode = resolveRpcExitCode(code, sawAgentEnd, wasAborted);
+				if (!sawAgentEnd && !resolved && exitCode !== 0 && !wasAborted) {
+					currentResult.errorMessage = "Subagent exited before agent_end (RPC stream ended unexpectedly)";
+				}
+				resolveOnce(exitCode);
 			});
 
-			proc.on("error", () => {
-				markStdinClosed(new Error("process error"));
+			proc.on("error", (error) => {
+				processClosed = true;
+				markStdinClosed(error instanceof Error ? error : new Error("process error"));
+				currentResult.errorMessage = error instanceof Error ? error.message : "Subagent process error";
 				resolveOnce(1);
 			});
 
 			if (signal) {
-				const abortRpc = () => {
+				abortHandler = () => {
 					wasAborted = true;
 					sendCommand({ type: "abort" }).catch(() => undefined);
-					proc.kill("SIGTERM");
+					terminateSubagent(proc, "SIGTERM");
 					setTimeout(() => {
-						if (!proc.killed) proc.kill("SIGKILL");
-					}, 5000);
+						if (isProcessActive(proc)) terminateSubagent(proc, "SIGKILL");
+					}, 5000).unref?.();
 				};
-				if (signal.aborted) abortRpc();
-				else signal.addEventListener("abort", abortRpc, { once: true });
+				if (signal.aborted) abortHandler();
+				else signal.addEventListener("abort", abortHandler, { once: true });
 			}
 
 			sendCommand({ type: "prompt", message: `Task: ${task}` })
@@ -866,7 +903,7 @@ async function runSingleAgent(
 				.catch((error) => {
 					currentResult.stderr += error?.message ? `\n${error.message}` : String(error);
 					resolveOnce(1);
-					proc.kill("SIGTERM");
+					terminateSubagent(proc, "SIGTERM");
 				});
 		});
 

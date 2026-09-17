@@ -1,0 +1,5 @@
+# Project core
+- `pi-hooks` is a collection of independently packaged pi-coding-agent TypeScript extensions; root `package.json` exposes checkpoint, LSP hook/tool, permission, ralph-loop, repeat, and token-rate entrypoints.
+- Main modules: `checkpoint/` (Git refs and restore), `lsp/` (language-server lifecycle, diagnostics, query tool), `permission/` (command classification/config), `ralph-loop/` (subagent loop), `repeat/`, `token-rate/`.
+- Root package is a pi package, not a conventional application; extension behavior is loaded from `package.json` `pi.extensions`.
+- Serena project metadata is in `.serena/project.yml`; TypeScript LSP is configured there and is active in the current Serena session. Read `mem:tech_stack` for package/tool details, `mem:suggested_commands` for commands, `mem:conventions` for coding patterns, and `mem:task_completion` for validation.

@@ -41,7 +41,7 @@ export default function (pi: ExtensionAPI) {
     reset(ctx);
   });
 
-  pi.on("session_switch", async (_event, ctx) => {
+  (pi as any).on("session_switch", async (_event: any, ctx: { hasUI: boolean; ui: { theme: any; setStatus: (key: string, text?: string) => void } }) => {
     reset(ctx);
   });
 
@@ -66,7 +66,7 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    const endMs = turnStreamEndMs ?? event.timestamp ?? Date.now();
+    const endMs = turnStreamEndMs ?? (event as any).timestamp ?? Date.now();
     const startMs = turnStartMs ?? endMs;
     const elapsedSeconds = Math.max(0.001, (endMs - startMs) / 1000);
 

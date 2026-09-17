@@ -4,6 +4,7 @@
   "description": "Token rate status extension for pi-coding-agent - shows average output tokens per second",
   "type": "module",
   "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
     "test": "echo \"No tests yet\""
   },
   "keywords": [

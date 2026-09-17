@@ -1,6 +1,7 @@
 /// <reference path="./types.d.ts" />
 
 import { spawnSync } from "node:child_process";
+import { numberedOptionIndex, numberedSelect } from "./ui.js";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -267,6 +268,7 @@ function getRepeatLabel(entry: RepeatToolCall): { label: string; description?: s
 async function showRepeatPicker(ctx: any, items: SelectItem[]): Promise<string | null> {
 	return ctx.ui.custom((tui, theme, _kb, done) => {
 		let searchQuery = "";
+		let filteredItems = items;
 
 		const buildSelectList = (listItems: SelectItem[]) => {
 			const selectList = new SelectList(listItems, Math.min(Math.max(listItems.length, 1), 12), {
@@ -291,7 +293,8 @@ async function showRepeatPicker(ctx: any, items: SelectItem[]): Promise<string |
 					const haystack = `${item.label ?? ""} ${item.description ?? ""}`.toLowerCase();
 					return tokens.every((token) => haystack.includes(token));
 				});
-			selectList = buildSelectList(filtered);
+			filteredItems = filtered;
+			selectList = buildSelectList(filteredItems);
 		};
 
 		const searchLine = {
@@ -318,7 +321,7 @@ async function showRepeatPicker(ctx: any, items: SelectItem[]): Promise<string |
 		container.addChild(selectListWrapper);
 
 		container.addChild(new Spacer(1));
-		container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter select • esc cancel"), 1, 0));
+		container.addChild(new Text(theme.fg("dim", "1-9 select • ↑↓ navigate • enter select • esc cancel"), 1, 0));
 		container.addChild(new Spacer(1));
 		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
 
@@ -345,6 +348,12 @@ async function showRepeatPicker(ctx: any, items: SelectItem[]): Promise<string |
 						tui.requestRender();
 						return;
 					}
+				}
+
+				const numberedIndex = numberedOptionIndex(data, filteredItems.length);
+				if (numberedIndex !== undefined) {
+					done(filteredItems[numberedIndex].value);
+					return;
 				}
 
 				const searchChar = getSearchInputCharacter(data);
@@ -417,7 +426,7 @@ export default function (pi: ExtensionAPI) {
 
 				let mode: "repeat" | "edit" = "repeat";
 				if (externalEditor) {
-					const choice = await ctx.ui.select("Repeat write:", [
+					const choice = await numberedSelect(ctx, "Repeat write:", [
 						"Re-write same content",
 						"Open in $EDITOR",
 					]);
@@ -482,7 +491,7 @@ export default function (pi: ExtensionAPI) {
 
 				let mode: "repeat" | "open" = "repeat";
 				if (externalEditor) {
-					const choice = await ctx.ui.select("Repeat edit:", [
+					const choice = await numberedSelect(ctx, "Repeat edit:", [
 						"Repeat the Edit",
 						"Open file at changed line",
 					]);

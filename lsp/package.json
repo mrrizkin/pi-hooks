@@ -1,9 +1,10 @@
 {
   "name": "lsp-pi",
   "version": "1.0.5",
-  "description": "LSP extension for pi-coding-agent - provides language server tool and diagnostics feedback for Dart/Flutter, TypeScript, Vue, Svelte, Python, Go, Kotlin, Swift, Rust",
+  "description": "LSP extension for pi-coding-agent - language server queries and diagnostics for TypeScript, C/C++, Dart, Python, Go, Kotlin, Ruby, Swift, Rust, Vue, and Svelte",
   "scripts": {
-    "test": "npx tsx tests/lsp.test.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "npx tsx tests/ui.test.ts && npx tsx tests/lsp.test.ts && npx tsx tests/lsp-config.test.ts",
     "test:tool": "npx tsx tests/index.test.ts",
     "test:integration": "npx tsx tests/lsp-integration.test.ts",
     "test:all": "npm test && npm run test:tool && npm run test:integration"
@@ -21,6 +22,10 @@
     "kotlin",
     "swift",
     "rust",
+    "ruby",
+    "c",
+    "cpp",
+    "clangd",
     "pi-coding-agent",
     "extension",
     "pi-package"
@@ -35,7 +40,7 @@
     ]
   },
   "dependencies": {
-    "vscode-languageserver-protocol": "^3.17.5"
+    "vscode-languageserver-protocol": "^3.18.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "^0.74.0",

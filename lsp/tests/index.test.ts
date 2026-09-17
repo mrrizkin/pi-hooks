@@ -2,6 +2,11 @@
  * Unit tests for index.ts formatting functions
  */
 
+import { mkdtemp, rm, writeFile, readFile } from "fs/promises";
+import { writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { pathToFileURL } from "url";
+
 // ============================================================================
 // Test utilities
 // ============================================================================
@@ -10,6 +15,10 @@ const tests: Array<{ name: string; fn: () => void | Promise<void> }> = [];
 
 function test(name: string, fn: () => void | Promise<void>) {
   tests.push({ name, fn });
+}
+
+function assert(condition: boolean, message: string): void {
+  if (!condition) throw new Error(message);
 }
 
 function assertEqual<T>(actual: T, expected: T, message?: string) {
@@ -24,7 +33,17 @@ function assertEqual<T>(actual: T, expected: T, message?: string) {
 // Or we can extract and test the logic directly
 // ============================================================================
 
-import { uriToPath, findSymbolPosition, formatDiagnostic, filterDiagnosticsBySeverity, collectSymbols } from "../lsp-core.js";
+import { uriToPath, findSymbolPosition, formatDiagnostic, filterDiagnosticsBySeverity, collectSymbols, applyWorkspaceEdit, LSPManager, LSP_SERVERS } from "../lsp-core.js";
+
+// ============================================================================
+// Protocol compatibility tests
+// ============================================================================
+
+test("protocol: Node entrypoint is importable on protocol 3.18+", async () => {
+  const protocol = await import("vscode-languageserver-protocol/node");
+  assert(typeof protocol.createMessageConnection === "function", "Node protocol entrypoint should export createMessageConnection");
+  assert(typeof protocol.InitializeRequest?.method === "string", "Node protocol entrypoint should export InitializeRequest");
+});
 
 // ============================================================================
 // uriToPath tests
@@ -274,6 +293,91 @@ test("collectSymbols: recurses into children with indentation", () => {
 test("collectSymbols: returns empty array for no symbols", () => {
   const lines = collectSymbols([] as any);
   assertEqual(lines.length, 0);
+});
+
+// ============================================================================
+// WorkspaceEdit and lifecycle tests
+// ============================================================================
+
+test("LSPManager: failed starts report backoff and retry state", async () => {
+  const dir = await mkdtemp(`${tmpdir()}/lsp-health-`);
+  const config = {
+    id: "test-failing-server",
+    extensions: [".fake"],
+    findRoot: () => dir,
+    spawn: async () => undefined,
+  } as any;
+  LSP_SERVERS.push(config);
+  try {
+    const file = `${dir}/example.fake`;
+    await writeFile(file, "test");
+    const manager = new LSPManager(dir);
+    try {
+      assertEqual((await manager.getClientsForFile(file)).length, 0);
+      const health = manager.getHealth().find((item) => item.server === config.id);
+      assertEqual(health?.status, "backoff");
+      assert((health?.attempts ?? 0) === 1, "failed start should record one attempt");
+    } finally {
+      await manager.shutdown();
+    }
+  } finally {
+    LSP_SERVERS.splice(LSP_SERVERS.indexOf(config), 1);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("applyWorkspaceEdit: applies multi-file edits", async () => {
+  const dir = await mkdtemp(`${tmpdir()}/lsp-edit-`);
+  try {
+    const first = `${dir}/first.ts`;
+    const second = `${dir}/second.ts`;
+    await writeFile(first, "const old = 1;\n");
+    await writeFile(second, "export const old = 2;\n");
+    const count = applyWorkspaceEdit({
+      changes: {
+        [pathToFileURL(first).href]: [{ range: { start: { line: 0, character: 6 }, end: { line: 0, character: 9 } }, newText: "new" }],
+        [pathToFileURL(second).href]: [{ range: { start: { line: 0, character: 13 }, end: { line: 0, character: 16 } }, newText: "new" }],
+      },
+    } as any, dir);
+    assertEqual(count, 2);
+    assertEqual(await readFile(first, "utf8"), "const new = 1;\n");
+    assertEqual(await readFile(second, "utf8"), "export const new = 2;\n");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("applyWorkspaceEdit: rolls back when a file write fails", async () => {
+  const dir = await mkdtemp(`${tmpdir()}/lsp-edit-fail-`);
+  try {
+    const first = `${dir}/first.ts`;
+    const second = `${dir}/second.ts`;
+    const originalFirst = "const old = 1;";
+    const originalSecond = "const old = 2;";
+    await writeFile(first, originalFirst);
+    await writeFile(second, originalSecond);
+    let writes = 0;
+    let failed = false;
+    try {
+      applyWorkspaceEdit({
+        changes: {
+          [pathToFileURL(first).href]: [{ range: { start: { line: 0, character: 6 }, end: { line: 0, character: 9 } }, newText: "new" }],
+          [pathToFileURL(second).href]: [{ range: { start: { line: 0, character: 6 }, end: { line: 0, character: 9 } }, newText: "new" }],
+        },
+      } as any, dir, { writeFile: (filePath, content) => {
+        writes++;
+        if (writes === 2) throw new Error("simulated write failure");
+        writeFileSync(filePath, content, "utf8");
+      } });
+    } catch (error) {
+      failed = String(error).includes("Failed to apply WorkspaceEdit");
+    }
+    assert(failed, "Expected an actionable WorkspaceEdit failure");
+    assertEqual(await readFile(first, "utf8"), originalFirst);
+    assertEqual(await readFile(second, "utf8"), originalSecond);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 // ============================================================================

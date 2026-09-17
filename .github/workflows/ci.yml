@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20.x, 22.x, 24.x]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Install root dependencies
+        run: npm install
+      - name: Install extension dependencies
+        run: |
+          npm install --prefix lsp
+          npm install --prefix checkpoint
+          npm install --prefix permission
+          npm install --prefix ralph-loop
+          npm install --prefix repeat
+          npm install --prefix token-rate
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit and integration tests
+        run: npm test
+      - name: Smoke import extensions
+        run: npm run smoke-import
