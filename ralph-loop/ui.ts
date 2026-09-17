@@ -1,6 +1,19 @@
 /** Lightweight, overlay-only UI for browsing ralph-loop history. */
 
-import { matchesKey, truncateToWidth, type Component } from "@earendil-works/pi-tui";
+import { matchesKey, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
+import {
+	AssistantMessageComponent,
+	ToolExecutionComponent,
+	UserMessageComponent,
+	createBashToolDefinition,
+	createEditToolDefinition,
+	createFindToolDefinition,
+	createGrepToolDefinition,
+	createLsToolDefinition,
+	createReadToolDefinition,
+	createWriteToolDefinition,
+	getMarkdownTheme,
+} from "@earendil-works/pi-coding-agent";
 
 export interface RalphLoopRun {
 	runId: string;
@@ -9,6 +22,7 @@ export interface RalphLoopRun {
 }
 
 export type LoopViewerAction = "up" | "down" | "pageUp" | "pageDown" | "home" | "end";
+export type OutputDisplayMode = "collapsed" | "simple" | "full";
 
 /** Discover persisted ralph-loop results without constructing any UI components. */
 export function discoverRalphLoopRuns(
@@ -128,6 +142,8 @@ interface TextViewerBlock {
 	text: string;
 	lineCount: number;
 	truncated: boolean;
+	maxChars: number;
+	maxLines: number;
 	boundedText?: string;
 	parts?: string[];
 }
@@ -138,17 +154,21 @@ function safeText(value: unknown): string {
 	try { return JSON.stringify(value); } catch { return String(value); }
 }
 
-function createTextBlock(prefix: string, value: unknown): TextViewerBlock | null {
+function createTextBlock(
+	prefix: string,
+	value: unknown,
+	limits: { maxChars: number; maxLines: number } = { maxChars: MAX_TEXT_CHARS, maxLines: MAX_LINES_PER_TEXT },
+): TextViewerBlock | null {
 	const text = safeText(value);
 	if (!text) return null;
-	const truncated = text.length > MAX_TEXT_CHARS;
-	const scanEnd = Math.min(text.length, MAX_TEXT_CHARS);
+	const truncated = text.length > limits.maxChars;
+	const scanEnd = Math.min(text.length, limits.maxChars);
 	let visiblePartCount = 1;
 	for (let i = 0; i < scanEnd; i++) {
 		if (text.charCodeAt(i) === 10) visiblePartCount++;
 	}
 	const rawLineCount = visiblePartCount;
-	visiblePartCount = Math.min(rawLineCount, MAX_LINES_PER_TEXT);
+	visiblePartCount = Math.min(rawLineCount, limits.maxLines);
 	const hasMarker = truncated || rawLineCount > visiblePartCount;
 	return {
 		kind: "text",
@@ -156,30 +176,43 @@ function createTextBlock(prefix: string, value: unknown): TextViewerBlock | null
 		text,
 		lineCount: visiblePartCount + (hasMarker ? 1 : 0),
 		truncated,
+		maxChars: limits.maxChars,
+		maxLines: limits.maxLines,
 	};
 }
 
-function pushText(blocks: ViewerBlock[], prefix: string, value: unknown): boolean {
-	const block = createTextBlock(prefix, value);
+function pushText(
+	blocks: ViewerBlock[],
+	prefix: string,
+	value: unknown,
+	limits?: { maxChars: number; maxLines: number },
+): boolean {
+	const block = createTextBlock(prefix, value, limits);
 	if (!block) return false;
 	blocks.push(block);
 	return true;
 }
 
-function pushContent(blocks: ViewerBlock[], prefix: string, content: any, showThinking: boolean): boolean {
-	if (typeof content === "string") return pushText(blocks, prefix, content);
+function pushContent(
+	blocks: ViewerBlock[],
+	prefix: string,
+	content: any,
+	showThinking: boolean,
+	limits?: { maxChars: number; maxLines: number },
+): boolean {
+	if (typeof content === "string") return pushText(blocks, prefix, content, limits);
 	if (!Array.isArray(content) || content.length === 0) return false;
 	let thinkingHidden = false;
 	for (const part of content) {
-		if (part?.type === "text") pushText(blocks, prefix, part.text);
+		if (part?.type === "text") pushText(blocks, prefix, part.text, limits);
 		else if (part?.type === "thinking") {
-			if (showThinking) pushText(blocks, prefix, part.thinking);
+			if (showThinking) pushText(blocks, prefix, part.thinking, limits);
 			else thinkingHidden = true;
 		} else if (part?.type === "image") {
 			blocks.push({ kind: "static", text: `${prefix}[image omitted]` });
 		}
 	}
-	if (thinkingHidden) blocks.push({ kind: "static", text: `${prefix}[Thinking hidden — Ctrl+T to show]` });
+	if (thinkingHidden) blocks.push({ kind: "static", text: `${prefix}Thinking...` });
 	return thinkingHidden;
 }
 
@@ -242,8 +275,8 @@ export class RalphLoopViewerLineSource {
 	private lineFromBlock(block: ViewerBlock, index: number): string {
 		if (block.kind === "static") return block.text;
 		if (!block.parts) {
-			block.boundedText = block.truncated ? block.text.slice(0, MAX_TEXT_CHARS) : block.text;
-			block.parts = block.boundedText.split("\n").slice(0, MAX_LINES_PER_TEXT);
+			block.boundedText = block.truncated ? block.text.slice(0, block.maxChars) : block.text;
+			block.parts = block.boundedText.split("\n").slice(0, block.maxLines);
 		}
 		if (index < block.parts.length) return `${block.prefix}${block.parts[index]}`;
 		return `${block.prefix}[… output shortened in viewer; original result is retained …]`;
@@ -274,7 +307,11 @@ function addLine(blocks: ViewerBlock[], text: string): void {
 }
 
 /** Build a bounded, lazy line source without constructing rich TUI components. */
-export function buildLoopViewerLineSource(details: any, showThinking = false): RalphLoopViewerLineSource {
+export function buildLoopViewerLineSource(
+	details: any,
+	showThinking = false,
+	outputMode: OutputDisplayMode = "full",
+): RalphLoopViewerLineSource {
 	const blocks: ViewerBlock[] = [];
 	addLine(blocks, `Status: ${details?.status || "unknown"}`);
 	addLine(blocks, `Stop: ${details?.stopReason || "(running)"}`);
@@ -318,12 +355,15 @@ export function buildLoopViewerLineSource(details: any, showThinking = false): R
 							addLine(blocks, `  Tool call: ${part.name || "(unknown)"} ${formatArgs(part.arguments)}`);
 						}
 					}
-					if (thinkingHidden) addLine(blocks, "  [Thinking hidden — Ctrl+T to show]");
+					if (thinkingHidden) addLine(blocks, "  Thinking...");
 					continue;
 				}
 				if (message?.role === "toolResult") {
 					addLine(blocks, `  Tool result: ${message.toolName || "(unknown)"}${message.isError ? " [error]" : ""}`);
-					pushContent(blocks, "    ", message.content, showThinking);
+					if (outputMode !== "simple") {
+						const limits = outputMode === "collapsed" ? { maxChars: 2_000, maxLines: 20 } : undefined;
+						pushContent(blocks, "    ", message.content, showThinking, limits);
+					}
 				}
 			}
 			if (messages.length === 0) addLine(blocks, "  (no messages)");
@@ -345,8 +385,12 @@ export function buildLoopViewerLineSource(details: any, showThinking = false): R
 }
 
 /** Compatibility/test helper that materializes the source on request. */
-export function buildLoopViewerLines(details: any, showThinking = false): string[] {
-	const source = buildLoopViewerLineSource(details, showThinking);
+export function buildLoopViewerLines(
+	details: any,
+	showThinking = false,
+	outputMode: OutputDisplayMode = "full",
+): string[] {
+	const source = buildLoopViewerLineSource(details, showThinking, outputMode);
 	return source.getLines(0, source.totalLines);
 }
 
@@ -354,11 +398,201 @@ function color(theme: any, name: string, text: string): string {
 	return typeof theme?.fg === "function" ? theme.fg(name, text) : text;
 }
 
+/**
+ * Resolve the same built-in tool definitions used by pi's interactive mode.
+ *
+ * Newer pi releases no longer make ToolExecutionComponent discover built-in
+ * renderers implicitly, so passing an explicit definition is required for the
+ * native call/result renderers (and their collapsed previews) to run.
+ */
+export function getNativeToolDefinition(toolName: string, cwd: string): any | undefined {
+	try {
+		switch (toolName) {
+			case "bash": return createBashToolDefinition(cwd);
+			case "edit": return createEditToolDefinition(cwd);
+			case "find": return createFindToolDefinition(cwd);
+			case "grep": return createGrepToolDefinition(cwd);
+			case "ls": return createLsToolDefinition(cwd);
+			case "read": return createReadToolDefinition(cwd);
+			case "write": return createWriteToolDefinition(cwd);
+			default: return undefined;
+		}
+	} catch {
+		return undefined;
+	}
+}
+
+function renderNativeComponent(component: any, width: number): string[] {
+	try {
+		return component.render(width);
+	} catch {
+		return [];
+	}
+}
+
+function appendNativeComponent(lines: string[], component: any, width: number): boolean {
+	const rendered = renderNativeComponent(component, width);
+	if (rendered.length === 0) return false;
+	lines.push(...rendered, "");
+	return true;
+}
+
+/** Flatten a native component into one bounded visual line for simple mode. */
+export function compactRenderedLines(lines: string[], width: number): string {
+	const compact = lines
+		.map((line) => line.replace(/\s+/g, " ").trim())
+		.filter(Boolean)
+		.join(" ");
+	return truncateToWidth(compact, Math.max(1, width));
+}
+
+function appendSimpleNativeComponent(lines: string[], component: any, width: number): boolean {
+	const rendered = renderNativeComponent(component, width);
+	if (rendered.length === 0) return false;
+	const compact = compactRenderedLines(rendered, Math.max(1, width - 2));
+	if (!compact) return false;
+	lines.push(compact, "");
+	return true;
+}
+
+function messageText(message: any): string {
+	return Array.isArray(message?.content)
+		? message.content
+				.filter((part: any) => part?.type === "text" && typeof part.text === "string")
+				.map((part: any) => part.text)
+				.join("\n")
+				.trim()
+		: safeText(message?.content).trim();
+}
+
+function renderNativeIteration(
+	iteration: any,
+	width: number,
+	showThinking: boolean,
+	outputMode: OutputDisplayMode,
+	tui: any,
+	cwd: string,
+	theme: any,
+): string[] {
+	const lines: string[] = [];
+	const details = iteration?.details;
+	const results = Array.isArray(details?.results) ? details.results : [];
+	lines.push(color(theme, "accent", `Iteration ${iteration?.index ?? "?"} (${details?.mode || "single"})`));
+
+	for (const result of results) {
+		const statusIcon = result?.exitCode === 0 ? "✓" : "✗";
+		lines.push(`${statusIcon} ${result?.agent || "(unknown agent)"} (${result?.agentSource || "unknown"})`);
+		if (result?.task) lines.push(`Task: ${result.task}`);
+		if (result?.errorMessage) lines.push(`Error: ${result.errorMessage}`);
+
+		const toolResults = new Map<string, any>();
+		const toolCalls = new Set<string>();
+		for (const message of Array.isArray(result?.messages) ? result.messages : []) {
+			if (message?.role === "assistant") {
+				for (const part of message.content || []) {
+					if (part?.type === "toolCall" && part.id) toolCalls.add(part.id);
+				}
+			} else if (message?.role === "toolResult" && message.toolCallId) {
+				toolResults.set(message.toolCallId, message);
+			}
+		}
+
+		for (const message of Array.isArray(result?.messages) ? result.messages : []) {
+			if (message?.role === "user") {
+				const text = messageText(message);
+				if (text) {
+					try {
+						if (!appendNativeComponent(lines, new UserMessageComponent(text), width)) throw new Error("user renderer unavailable");
+					} catch {
+						lines.push(`User: ${text}`);
+					}
+				}
+				continue;
+			}
+			if (message?.role === "assistant") {
+				try {
+					if (!appendNativeComponent(lines, new AssistantMessageComponent(message, !showThinking, getMarkdownTheme()), width)) {
+						throw new Error("assistant renderer unavailable");
+					}
+				} catch {
+					let thinkingHidden = false;
+					for (const part of message.content || []) {
+						if (part?.type === "text" && typeof part.text === "string") lines.push(`Assistant: ${part.text}`);
+						if (part?.type === "thinking" && !showThinking) thinkingHidden = true;
+						if (part?.type === "thinking" && showThinking && typeof part.thinking === "string") lines.push(`Thinking: ${part.thinking}`);
+					}
+					if (thinkingHidden) lines.push("Thinking...");
+				}
+				for (const part of message.content || []) {
+					if (part?.type !== "toolCall") continue;
+					const toolResult = toolResults.get(part.id);
+					try {
+						const tool = new ToolExecutionComponent(
+							part.name || toolResult?.toolName || "",
+							part.id || "",
+							part.arguments ?? {},
+							{ showImages: false },
+							getNativeToolDefinition(part.name || toolResult?.toolName || "", cwd),
+							tui ?? { requestRender: () => {} },
+							cwd,
+						);
+						if (outputMode === "simple") {
+							if (!appendSimpleNativeComponent(lines, tool, width)) throw new Error("tool renderer unavailable");
+						} else {
+							tool.updateResult(
+								toolResult ?? { content: [], details: undefined, isError: false },
+								!toolResult || Boolean(toolResult.isPartial),
+							);
+							tool.setExpanded(outputMode === "full");
+							if (!appendNativeComponent(lines, tool, width)) throw new Error("tool renderer unavailable");
+						}
+					} catch {
+						lines.push(`Tool: ${part.name || "(unknown)"} ${formatArgs(part.arguments)}`);
+					}
+				}
+				continue;
+			}
+			if (message?.role === "toolResult" && (!message.toolCallId || !toolCalls.has(message.toolCallId))) {
+				try {
+					const tool = new ToolExecutionComponent(
+						message.toolName || "",
+						message.toolCallId || "",
+						{},
+						{ showImages: false },
+						getNativeToolDefinition(message.toolName || "", cwd),
+						tui ?? { requestRender: () => {} },
+						cwd,
+					);
+					if (outputMode === "simple") {
+						if (!appendSimpleNativeComponent(lines, tool, width)) throw new Error("tool renderer unavailable");
+					} else {
+						tool.updateResult(message, Boolean(message.isPartial));
+						tool.setExpanded(outputMode === "full");
+						if (!appendNativeComponent(lines, tool, width)) throw new Error("tool renderer unavailable");
+					}
+				} catch {
+					lines.push(`Tool result: ${message.toolName || "(unknown)"}`);
+				}
+			}
+		}
+		if (Array.isArray(result?.messages) && result.messages.length === 0) lines.push("(no messages)");
+	}
+	return lines;
+}
+
 export class RalphLoopViewer implements Component {
 	private offset = 0;
+	private followTail = true;
+	private hasRendered = false;
+	private lastTotalLines = 0;
 	private showThinking = false;
+	private outputMode: OutputDisplayMode = "collapsed";
 	private cachedDetails: any = undefined;
-	private cachedSource: RalphLoopViewerLineSource | undefined;
+	private cachedWidth = 0;
+	private cachedNativeLines: string[] | undefined;
+	private cachedShowThinking = false;
+	private cachedOutputMode: OutputDisplayMode = "collapsed";
+	private readonly iterationLineCache = new WeakMap<object, Map<string, string[]>>();
 
 	constructor(
 		private readonly run: RalphLoopRun,
@@ -366,51 +600,149 @@ export class RalphLoopViewer implements Component {
 		private readonly tui: any,
 		private readonly theme: any,
 		private readonly done: (result: null) => void,
+		private readonly cwd = process.cwd(),
 	) {}
 
 	private viewportLines(): number {
 		const rows = Number(this.tui?.terminal?.rows);
-		return Math.max(1, Math.min(24, Number.isFinite(rows) && rows > 0 ? rows - 5 : 19));
+		// The frame consumes two rows, while header, controls, and footer consume
+		// three more. Keep the body below the overlay maxHeight.
+		return Math.max(1, Math.min(24, Number.isFinite(rows) && rows > 0 ? rows - 7 : 17));
 	}
 
-	private source(): RalphLoopViewerLineSource {
-		const details = this.getDetails() || this.run.details;
-		if (details !== this.cachedDetails || !this.cachedSource) {
-			this.cachedDetails = details;
-			this.cachedSource = buildLoopViewerLineSource(details, this.showThinking);
-			this.offset = clampLoopViewerOffset(this.offset, this.cachedSource.totalLines, this.viewportLines());
+	private maxOffset(totalLines: number): number {
+		return Math.max(0, totalLines - this.viewportLines());
+	}
+
+	private renderIteration(iteration: any, width: number): string[] {
+		if (!iteration || typeof iteration !== "object") return [];
+		const key = `${width}:${this.showThinking ? "thinking" : "hidden"}:${this.outputMode}`;
+		let cached = this.iterationLineCache.get(iteration);
+		if (!cached) {
+			cached = new Map();
+			this.iterationLineCache.set(iteration, cached);
 		}
-		return this.cachedSource;
+		const existing = cached.get(key);
+		if (existing) return existing;
+		const lines = renderNativeIteration(iteration, width, this.showThinking, this.outputMode, this.tui, this.cwd, this.theme);
+		cached.set(key, lines);
+		return lines;
+	}
+
+	private renderedLines(details: any, width: number): string[] {
+		if (
+			details === this.cachedDetails &&
+			width === this.cachedWidth &&
+			this.showThinking === this.cachedShowThinking &&
+			this.outputMode === this.cachedOutputMode &&
+			this.cachedNativeLines
+		) {
+			return this.cachedNativeLines;
+		}
+
+		const previousTotal = this.lastTotalLines;
+		const lines: string[] = [];
+		const addMeta = (text: string, colorName = "muted") => lines.push(color(this.theme, colorName, text));
+		addMeta(`Status: ${details?.status || "unknown"}`, "dim");
+		addMeta(`Stop: ${details?.stopReason || "(running)"}`, "dim");
+		addMeta(`Condition: ${details?.conditionCommand || "(none)"}`, "dim");
+		if (details?.conditionTimeoutMs) addMeta(`Condition timeout: ${details.conditionTimeoutMs}ms`, "dim");
+		const iterations = Array.isArray(details?.iterations) ? details.iterations : [];
+		addMeta(`Iterations: ${iterations.length}`, "dim");
+		if (details?.stopOnCompletion) {
+			addMeta(
+				`Completion confirmations: ${details.completionStreak ?? 0}/${details.completionConfirmations ?? 3}`,
+				"dim",
+			);
+		}
+		if (details?.handoffMode && details.handoffMode !== "none") addMeta(`Handoff: ${details.handoffMode}`, "dim");
+		if (Array.isArray(details?.artifactPaths)) {
+			for (const artifactPath of details.artifactPaths) addMeta(`Artifact: ${artifactPath}`, "dim");
+		}
+		if (iterations.length === 0) addMeta("(no iterations yet)");
+		for (const iteration of iterations) lines.push(...this.renderIteration(iteration, width));
+		if (details?.steering?.length || details?.followUps?.length || details?.steeringSent?.length || details?.followUpsSent?.length) {
+			addMeta("Queued messages", "accent");
+			for (const [label, values] of [
+				["Steering queued", details.steering],
+				["Follow-ups queued", details.followUps],
+				["Steering sent", details.steeringSent],
+				["Follow-ups sent", details.followUpsSent],
+			] as const) {
+				if (values?.length) addMeta(`  ${label}: ${values.join(" | ")}`);
+			}
+		}
+
+		this.cachedDetails = details;
+		this.cachedWidth = width;
+		this.cachedShowThinking = this.showThinking;
+		this.cachedOutputMode = this.outputMode;
+		this.cachedNativeLines = lines;
+		this.lastTotalLines = lines.length;
+		const maxOffset = this.maxOffset(lines.length);
+		if (!this.hasRendered || this.followTail) {
+			this.offset = maxOffset;
+		} else if (lines.length !== previousTotal) {
+			this.offset = clampLoopViewerOffset(this.offset, lines.length, this.viewportLines());
+		} else {
+			this.offset = clampLoopViewerOffset(this.offset, lines.length, this.viewportLines());
+		}
+		return lines;
+	}
+
+	private frameLine(line: string, innerWidth: number): string {
+		const text = truncateToWidth(line, innerWidth);
+		const padding = Math.max(0, innerWidth - visibleWidth(text));
+		return `${color(this.theme, "border", "│")}${text}${" ".repeat(padding)}${color(this.theme, "border", "│")}`;
 	}
 
 	invalidate(): void {
 		this.cachedDetails = undefined;
-		this.cachedSource = undefined;
+		this.cachedNativeLines = undefined;
 	}
 
 	dispose(): void {
-		this.cachedSource = undefined;
+		this.cachedNativeLines = undefined;
+		this.cachedDetails = undefined;
 	}
 
 	render(width: number): string[] {
-		const source = this.source();
-		const viewport = this.viewportLines();
-		this.offset = clampLoopViewerOffset(this.offset, source.totalLines, viewport);
-		const end = Math.min(source.totalLines, this.offset + viewport);
-		const position = source.totalLines === 0 ? "0/0" : `${this.offset + 1}-${end}/${source.totalLines}`;
 		const details = this.getDetails() || this.run.details;
-		const contentWidth = Math.max(1, width - 2);
-		const header = truncateToWidth(color(this.theme, "accent", `Ralph Loop ${this.run.runId} · ${details?.status || "unknown"}`), contentWidth);
-		const controls = truncateToWidth(color(this.theme, "dim", `↑↓/PgUp PgDn · Home/End · Ctrl+T thinking:${this.showThinking ? "on" : "off"} · Esc close`), contentWidth);
-		const body = source.getLines(this.offset, end).map((line) => truncateToWidth(line, contentWidth));
+		const lines = this.renderedLines(details, width);
+		const viewport = this.viewportLines();
+		this.offset = clampLoopViewerOffset(this.offset, lines.length, viewport);
+		const end = Math.min(lines.length, this.offset + viewport);
+		const position = lines.length === 0 ? "0/0" : `${this.offset + 1}-${end}/${lines.length}`;
+		const innerWidth = Math.max(1, width - 2);
+		const header = truncateToWidth(
+			color(this.theme, "accent", `Ralph Loop ${this.run.runId} · ${details?.status || "unknown"} · ${this.outputMode}`),
+			innerWidth,
+		);
+		const controls = truncateToWidth(
+			color(
+				this.theme,
+				"dim",
+				`↑↓ PgUp/Dn Home/End · Ctrl+O output · Ctrl+T think · auto:${this.followTail ? "on" : "paused"} · Esc`,
+			),
+			innerWidth,
+		);
 		const above = this.offset > 0 ? "↑ more above" : "";
-		const below = end < source.totalLines ? "↓ more below" : "";
-		const footer = truncateToWidth(color(this.theme, "muted", `${position}${above || below ? ` · ${[above, below].filter(Boolean).join(" · ")}` : ""}`), contentWidth);
-		return [header, controls, ...body, footer];
+		const below = end < lines.length ? "↓ more below" : "";
+		const footer = truncateToWidth(
+			color(this.theme, "muted", `${position}${above || below ? ` · ${[above, below].filter(Boolean).join(" · ")}` : ""}`),
+			innerWidth,
+		);
+		const body = [header, controls, ...lines.slice(this.offset, end), footer];
+		const top = color(this.theme, "borderAccent", `╭${"─".repeat(innerWidth)}╮`);
+		const bottom = color(this.theme, "borderAccent", `╰${"─".repeat(innerWidth)}╯`);
+		this.hasRendered = true;
+		return [top, ...body.map((line) => this.frameLine(line, innerWidth)), bottom];
 	}
 
 	handleInput(data: string): void {
-		const source = this.source();
+		const details = this.getDetails() || this.run.details;
+		const inputWidth = this.cachedWidth || Number(this.tui?.terminal?.columns) || 80;
+		const lines = this.renderedLines(details, inputWidth);
 		const viewport = this.viewportLines();
 		let action: LoopViewerAction | undefined;
 		if (matchesKey(data, "up")) action = "up";
@@ -419,20 +751,32 @@ export class RalphLoopViewer implements Component {
 		else if (matchesKey(data, "pageDown")) action = "pageDown";
 		else if (matchesKey(data, "home")) action = "home";
 		else if (matchesKey(data, "end")) action = "end";
-		else if (matchesKey(data, "ctrl+t") || data === "\x14") {
+		else if (matchesKey(data, "ctrl+o") || data === "\x0f") {
+			this.outputMode = this.outputMode === "collapsed"
+				? "simple"
+				: this.outputMode === "simple"
+					? "full"
+					: "collapsed";
+			this.cachedDetails = undefined;
+			this.cachedNativeLines = undefined;
+			this.tui?.requestRender?.();
+			return;
+		} else if (matchesKey(data, "ctrl+t") || data === "\x14") {
 			this.showThinking = !this.showThinking;
-			this.cachedSource = undefined;
-			const nextSource = this.source();
-			this.offset = clampLoopViewerOffset(this.offset, nextSource.totalLines, viewport);
+			this.cachedDetails = undefined;
+			this.cachedNativeLines = undefined;
 			this.tui?.requestRender?.();
 			return;
 		} else if (matchesKey(data, "escape") || data === "\x1b") {
 			this.done(null);
 			return;
 		}
-		if (action) {
-			this.offset = applyLoopViewerNavigation(this.offset, source.totalLines, viewport, action);
-			this.tui?.requestRender?.();
-		}
+		if (!action) return;
+		const previousOffset = this.offset;
+		this.offset = applyLoopViewerNavigation(this.offset, lines.length, viewport, action);
+		const maxOffset = this.maxOffset(lines.length);
+		if (action === "end" || this.offset >= maxOffset) this.followTail = true;
+		else if (this.offset < previousOffset || action === "home" || action === "pageUp" || action === "up") this.followTail = false;
+		this.tui?.requestRender?.();
 	}
 }

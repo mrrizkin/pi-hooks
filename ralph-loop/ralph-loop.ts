@@ -1667,7 +1667,7 @@ export default function (pi: ExtensionAPI) {
 			try {
 				await ctx.ui.custom((tui: any, theme: any, _keybindings: any, done: (result: null) => void) => {
 					overlayTui = tui;
-					viewer = new RalphLoopViewer(selected, getDetails, tui, theme, done);
+					viewer = new RalphLoopViewer(selected, getDetails, tui, theme, done, ctx.cwd);
 					return viewer;
 				}, {
 					overlay: true,

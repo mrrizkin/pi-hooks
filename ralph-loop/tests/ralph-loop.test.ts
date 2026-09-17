@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import registerRalphLoop, {
   buildIterationTask,
   checkLoopCondition,
@@ -22,7 +23,9 @@ import {
   applyLoopViewerNavigation,
   buildLoopViewerLineSource,
   buildLoopViewerLines,
+  compactRenderedLines,
   discoverRalphLoopRuns,
+  getNativeToolDefinition,
   RalphLoopViewer,
 } from "../ui.js";
 
@@ -144,15 +147,127 @@ const tests: Array<[string, () => void | Promise<void>]> = [
     };
     const lines = buildLoopViewerLines(details);
     assert(!lines.some((line) => line.includes("secret reasoning")), "thinking should be hidden by default");
-    assert(lines.some((line) => line.includes("Thinking hidden")), "hidden thinking should be indicated");
+    assert(lines.some((line) => line.includes("Thinking...")), "hidden thinking should use the native placeholder text");
     const tui = { terminal: { rows: 20 }, requestRender: () => {} };
     const viewer = new RalphLoopViewer({ runId: "run-view", details, active: false }, () => details, tui, {}, () => {});
     const narrowRender = viewer.render(20);
     assert(narrowRender.length <= 20, "viewer output should fit its bounded viewport");
+    assert(narrowRender[0].startsWith("╭") && narrowRender[narrowRender.length - 1].startsWith("╰"), "viewer should render a border");
+    assert(viewer.render(80).some((line) => line.includes("auto:on")), "viewer should follow the live tail by default");
     const visibleWidth = (line: string) => line.replace(/\x1b\[[0-9;]*m/g, "").length;
-    assert(narrowRender.every((line) => visibleWidth(line) <= 18), "viewer lines should remain within narrow overlay width");
+    assert(narrowRender.every((line) => visibleWidth(line) <= 20), "viewer lines should remain within narrow overlay width");
+
+    const manyMessages = Array.from({ length: 30 }, (_, index) => ({
+      role: "assistant",
+      content: [{ type: "text", text: `answer-${index}` }],
+    }));
+    let selectedDetails: any = {
+      ...details,
+      iterations: [{ ...details.iterations[0], details: { ...details.iterations[0].details, results: [{
+        ...details.iterations[0].details.results[0], messages: manyMessages,
+      }] } }],
+    };
+    const scrollingViewer = new RalphLoopViewer(
+      { runId: "run-scroll", details: selectedDetails, active: true },
+      () => selectedDetails,
+      { terminal: { rows: 20, columns: 50 }, requestRender: () => {} },
+      {},
+      () => {},
+    );
+    scrollingViewer.handleInput("\x0f");
+    scrollingViewer.handleInput("\x0f");
+    const bottomRender = scrollingViewer.render(50).join("\\n");
+    assert(bottomRender.includes("answer-29"), "viewer should open at the bottom");
+    scrollingViewer.handleInput("\x1b[A");
+    selectedDetails = {
+      ...selectedDetails,
+      iterations: [{ ...selectedDetails.iterations[0], details: { ...selectedDetails.iterations[0].details, results: [{
+        ...selectedDetails.iterations[0].details.results[0],
+        messages: [...manyMessages, { role: "assistant", content: [{ type: "text", text: "answer-30" }] }],
+      }] } }],
+    };
+    scrollingViewer.invalidate();
+    const pausedRender = scrollingViewer.render(50).join("\\n");
+    assert(!pausedRender.includes("answer-30"), "scrolling up should pause auto-scroll");
+    scrollingViewer.handleInput("\x1b[F");
+    assert(scrollingViewer.render(50).join("\\n").includes("answer-30"), "End should return to the live tail");
+    const collapsedText = viewer.render(80).join("\\n");
+    assert(collapsedText.includes("· collapsed"), "viewer should default to collapsed output");
+    viewer.handleInput("\x0f");
+    assert(viewer.render(80).join("\\n").includes("· simple"), "Ctrl+O should switch to simple output");
+    viewer.handleInput("\x0f");
+    assert(viewer.render(80).join("\\n").includes("· full"), "Ctrl+O should switch to full output");
     viewer.handleInput("\x14");
     assert(viewer.render(80).some((line) => line.includes("secret reasoning")), "Ctrl+T should reveal thinking");
+
+    const modeDetails = {
+      ...details,
+      iterations: [{ ...details.iterations[0], details: { ...details.iterations[0].details, results: [{
+        ...details.iterations[0].details.results[0],
+        messages: [
+          { role: "assistant", content: [
+            { type: "thinking", thinking: "all reasoning" },
+            { type: "text", text: "ordinary assistant output" },
+            { type: "toolCall", id: "tool-1", name: "read", arguments: { path: "src/example.ts" } },
+          ] },
+          { role: "toolResult", toolCallId: "tool-1", toolName: "read", isError: false, content: [{ type: "text", text: "tool output" }] },
+        ],
+      }] } }],
+    };
+    const fullMode = buildLoopViewerLines(modeDetails, true, "full").join("\\n");
+    const collapsedMode = buildLoopViewerLines(modeDetails, true, "collapsed").join("\\n");
+    const simpleMode = buildLoopViewerLines(modeDetails, true, "simple").join("\\n");
+    assert(fullMode.includes("ordinary assistant output") && fullMode.includes("all reasoning") && fullMode.includes("tool output"), "full mode should show all content");
+    assert(collapsedMode.includes("ordinary assistant output") && collapsedMode.includes("all reasoning") && collapsedMode.includes("tool output"), "collapsed mode should retain the full structure with truncated tool output");
+    assert(simpleMode.includes("ordinary assistant output") && simpleMode.includes("all reasoning") && simpleMode.includes("read"), "simple mode should retain assistant and thinking content");
+    assert(!simpleMode.includes("tool output"), "simple mode should omit tool output only");
+    const longToolDetails = {
+      ...modeDetails,
+      iterations: [{ ...modeDetails.iterations[0], details: { ...modeDetails.iterations[0].details, results: [{
+        ...modeDetails.iterations[0].details.results[0],
+        messages: [
+          modeDetails.iterations[0].details.results[0].messages[0],
+          { role: "toolResult", toolCallId: "tool-1", toolName: "read", isError: false, content: [{ type: "text", text: Array.from({ length: 30 }, (_, index) => `tool-line-${index}`).join("\n") }] },
+        ],
+      }] } }],
+    };
+    const longFullMode = buildLoopViewerLines(longToolDetails, true, "full");
+    const longCollapsedMode = buildLoopViewerLines(longToolDetails, true, "collapsed");
+    assert(longCollapsedMode.length < longFullMode.length, "collapsed mode should truncate tool output relative to full mode");
+    const hiddenMode = buildLoopViewerLines(modeDetails, false, "simple").join("\\n");
+    assert(hiddenMode.includes("Thinking...") && !hiddenMode.includes("all reasoning"), "hidden thinking should become Thinking...");
+
+    const compactCall = compactRenderedLines(
+      ["read /very/long/path/to/a/file/with/a/name-that-keeps-going.ts", "offset=100 limit=200"],
+      32,
+    );
+    assert(!compactCall.includes("\n"), "simple tool calls must stay on one line");
+    assert(visibleWidth(compactCall) <= 32, "simple tool calls must be truncated to the available width");
+
+    initTheme(undefined, false);
+    const nativeViewer = new RalphLoopViewer(
+      { runId: "run-native-modes", details: longToolDetails, active: false },
+      () => longToolDetails,
+      { terminal: { rows: 40, columns: 80 }, requestRender: () => {} },
+      {},
+      () => {},
+    );
+    nativeViewer.handleInput("\x0f"); // simple
+    nativeViewer.handleInput("\x0f"); // full
+    nativeViewer.handleInput("\x1b[H"); // inspect the native tool call at the top
+    const nativeCall = nativeViewer.render(80).join("\n");
+    nativeViewer.handleInput("\x1b[F"); // inspect the end of full output
+    const nativeFull = nativeViewer.render(80).join("\n");
+    nativeViewer.handleInput("\x0f"); // collapsed
+    const nativeCollapsed = nativeViewer.render(80).join("\n");
+    const stripAnsi = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "");
+    const nativeReadDefinition = getNativeToolDefinition("read", process.cwd());
+    assert(typeof nativeReadDefinition?.renderCall === "function", "built-in read renderer should be resolved explicitly");
+    assert(stripAnsi(nativeCall).includes("read src/example.ts"), "native tool calls should use the parsed read renderer");
+    assert(!stripAnsi(nativeCall).includes('"path": "src/example.ts"'), "native tool calls should not fall back to raw JSON args");
+    assert(stripAnsi(nativeFull).includes("tool-line-29"), "native full mode should show the complete tool output");
+    assert(!stripAnsi(nativeCollapsed).includes("tool-line-29"), "switching back to collapsed must truncate native tool output");
+
     tui.terminal.rows = 8;
     assert(viewer.render(30).length <= 8, "viewer should recalculate its bounded viewport after resize");
 

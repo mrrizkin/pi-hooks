@@ -42,6 +42,14 @@ declare module "@earendil-works/pi-ai" {
 declare module "@earendil-works/pi-coding-agent" {
 	export type ExtensionAPI = any;
 	export const getMarkdownTheme: any;
+	export const initTheme: any;
+	export const createBashToolDefinition: any;
+	export const createEditToolDefinition: any;
+	export const createFindToolDefinition: any;
+	export const createGrepToolDefinition: any;
+	export const createLsToolDefinition: any;
+	export const createReadToolDefinition: any;
+	export const createWriteToolDefinition: any;
 	export const formatSize: any;
 	export const truncateTail: any;
 	export class AssistantMessageComponent {
@@ -83,6 +91,7 @@ declare module "@earendil-works/pi-tui" {
 		render(...args: any[]): any;
 	}
 	export const truncateToWidth: any;
+	export const visibleWidth: any;
 	export class Markdown {
 		constructor(...args: any[]);
 		setText(...args: any[]): void;

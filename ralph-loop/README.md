@@ -34,7 +34,7 @@ While `ralph_loop` is running in interactive mode:
 - `/ralph-status` to show loop status
 - `/ralph-view` to select a run and open its scrollable history viewer
 
-The viewer is an overlay and does not add the full history to the main chat. Select a run first, then use `Up`/`Down`, `PageUp`/`PageDown`, `Home`/`End`, and `Esc` to navigate and close it. Thinking is hidden by default; press `Ctrl+T` inside the viewer to toggle its display without changing the model's thinking setting.
+The viewer is an overlay and does not add the full history to the main chat. Select a run first, then use `Up`/`Down`, `PageUp`/`PageDown`, `Home`/`End`, and `Esc` to navigate and close it. It opens at the bottom and follows new output while the selected run is active; scrolling upward pauses auto-scroll and `End` resumes it. Output starts in `collapsed` mode; press `Ctrl+O` to cycle `collapsed`, `simple`, and `full`. These modes only affect tool output: `full` uses the normal native renderer, `collapsed` is its truncated state, and `simple` shows the tool call and filename/arguments without tool output. Assistant text is always shown. Thinking is hidden by default; press `Ctrl+T` inside the viewer to toggle its display without changing the model's thinking setting. Hidden thinking is replaced by `Thinking...`; visible thinking shows all thinking content.
 
 The main ralph-loop result stays compact; detailed assistant, thinking, and tool output is available in the viewer. Steering and follow-up messages are sent to the current iteration when possible, otherwise queued for the next iteration; queued/sent messages show in the UI.
 
