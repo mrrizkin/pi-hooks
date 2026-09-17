@@ -83,6 +83,8 @@ Looped subagent execution via the `ralph_loop` tool.
 - Supports `conditionCommand`, bounded `maxIterations` (default 10, maximum 100), `conditionTimeoutMs`, and `sleepMs` controls
 - Interactive steering/follow-up + pause/resume/stop commands in UI mode
 - `/ralph-view` opens a selectable, internally scrollable history overlay (thinking hidden by default)
+- Stops early after three consecutive verified `RALPH_DONE` completion signals by default
+- Preserves the original task while optionally carrying a structured handoff and full artifact between iterations
 - Defaults to the `worker` agent and the last user prompt when omitted
 - No npm install required
 

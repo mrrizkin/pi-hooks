@@ -282,6 +282,14 @@ export function buildLoopViewerLineSource(details: any, showThinking = false): R
 	if (details?.conditionTimeoutMs) addLine(blocks, `Condition timeout: ${details.conditionTimeoutMs}ms`);
 	const iterations = Array.isArray(details?.iterations) ? details.iterations : [];
 	addLine(blocks, `Iterations: ${iterations.length}`);
+	const completion = details?.stopOnCompletion
+		? `${details.completionStreak ?? 0}/${details.completionConfirmations ?? 3}`
+		: "disabled";
+	addLine(blocks, `Completion confirmations: ${completion}`);
+	if (details?.handoffMode && details.handoffMode !== "none") addLine(blocks, `Handoff: ${details.handoffMode}`);
+	if (Array.isArray(details?.artifactPaths)) {
+		for (const artifactPath of details.artifactPaths) addLine(blocks, `Artifact: ${artifactPath}`);
+	}
 
 	if (iterations.length === 0) addLine(blocks, "(no iterations yet)");
 	for (const iteration of iterations) {

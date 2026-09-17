@@ -1,12 +1,22 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
 import registerRalphLoop, {
+  buildIterationTask,
   checkLoopCondition,
+  DEFAULT_COMPLETION_CONFIRMATIONS,
   DEFAULT_CONDITION_TIMEOUT_MS,
   DEFAULT_LOOP_MAX_ITERATIONS,
+  DEFAULT_STOP_ON_COMPLETION,
+  COMPLETION_MARKER,
+  extractRalphHandoff,
+  hasCompletionMarker,
   MAX_CONDITION_TIMEOUT_MS,
   MAX_LOOP_ITERATIONS,
   parseLoopNumber,
   parseRpcLine,
   resolveRpcExitCode,
+  updateCompletionStreak,
+  writeIterationArtifact,
 } from "../ralph-loop.js";
 import {
   applyLoopViewerNavigation,
@@ -48,6 +58,43 @@ const tests: Array<[string, () => void | Promise<void>]> = [
     assert(parseLoopNumber("10junk", DEFAULT_LOOP_MAX_ITERATIONS, false, MAX_LOOP_ITERATIONS) === null, "partial numeric strings should be rejected");
     assert(parseLoopNumber(1.5, DEFAULT_LOOP_MAX_ITERATIONS, false, MAX_LOOP_ITERATIONS) === null, "fractional values should be rejected");
     assert(parseLoopNumber(0, DEFAULT_LOOP_MAX_ITERATIONS, true) === 0, "zero should be accepted when enabled");
+  }],
+  ["completion requires consecutive confirmations and preserves the original task", () => {
+    assert(DEFAULT_STOP_ON_COMPLETION, "completion stopping should be enabled by default");
+    assert(DEFAULT_COMPLETION_CONFIRMATIONS === 3, "three confirmations should be the default");
+    assert(hasCompletionMarker(`verified\n${COMPLETION_MARKER}`), "a final marker should be detected");
+    assert(!hasCompletionMarker(`${COMPLETION_MARKER}\nmore work`), "a non-final marker should not be detected");
+
+    let streak = updateCompletionStreak(0, true, 3);
+    assert(streak.streak === 1 && !streak.shouldStop, "first confirmation should not stop");
+    streak = updateCompletionStreak(streak.streak, true, 3);
+    assert(streak.streak === 2 && !streak.shouldStop, "second confirmation should not stop");
+    streak = updateCompletionStreak(streak.streak, true, 3);
+    assert(streak.streak === 3 && streak.shouldStop, "third confirmation should stop");
+    streak = updateCompletionStreak(streak.streak, false, 3);
+    assert(streak.streak === 0 && !streak.shouldStop, "a non-confirmation should reset the streak");
+
+    const handoff = `RALPH_HANDOFF\nStatus: in_progress\nNext action: verify\nRALPH_HANDOFF_END`;
+    assert(extractRalphHandoff(`answer\n${handoff}\n${COMPLETION_MARKER}`) === handoff, "structured handoff should be extracted");
+    const original = "Explore the project and report its architecture.";
+    const task = buildIterationTask(original, {
+      stopOnCompletion: true,
+      verificationPass: 1,
+      handoffMode: "summary",
+      handoff,
+      artifactPath: "/tmp/iteration-1.md",
+    });
+    assert(task.startsWith(original), "the original task must remain at the beginning");
+    assert(task.includes(handoff) && task.includes("/tmp/iteration-1.md"), "handoff should be appended separately");
+    assert(!task.startsWith(handoff), "handoff must not replace the original task");
+  }],
+  ["artifacts preserve complete output without character truncation", () => {
+    const directory = fs.mkdtempSync(os.tmpdir() + "/ralph-test-");
+    const output = "important-context-" + "x".repeat(50_000);
+    const artifact = writeIterationArtifact(directory, 1, { mode: "single", agentScope: "user", projectAgentsDir: null, results: [] }, output);
+    assert(artifact !== null, "artifact should be written");
+    assert(fs.readFileSync(artifact!, "utf8").includes(output), "artifact should contain complete output");
+    fs.rmSync(directory, { recursive: true, force: true });
   }],
   ["condition requires success and uses a timeout", async () => {
     let receivedOptions: any;

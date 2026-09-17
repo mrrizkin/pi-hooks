@@ -121,6 +121,7 @@ export interface LoopPromptInfo {
 	items: LoopPromptItem[];
 }
 
+export type HandoffMode = "none" | "summary" | "artifact";
 type LoopRunStatus = "idle" | "running" | "paused" | "stopping";
 
 export interface RalphLoopDetails {
@@ -139,6 +140,11 @@ export interface RalphLoopDetails {
 	steeringSent: string[];
 	followUpsSent: string[];
 	status: LoopRunStatus;
+	stopOnCompletion: boolean;
+	completionConfirmations: number;
+	completionStreak: number;
+	handoffMode: HandoffMode;
+	artifactPaths: string[];
 }
 
 export interface LoopControlState {
@@ -173,6 +179,108 @@ function getFinalOutput(messages: Message[]): string {
 		}
 	}
 	return "";
+}
+
+function getFinalAssistantText(messages: Message[]): string {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const msg = messages[i];
+		if (msg.role === "assistant") {
+			return msg.content
+				.filter((part: any) => part?.type === "text" && typeof part.text === "string")
+				.map((part: any) => part.text)
+				.join("\n");
+		}
+	}
+	return "";
+}
+
+export function hasCompletionMarker(text: string): boolean {
+	const lastLine = text
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.pop();
+	return lastLine === COMPLETION_MARKER;
+}
+
+export function updateCompletionStreak(
+	currentStreak: number,
+	completed: boolean,
+	requiredConfirmations: number,
+): { streak: number; shouldStop: boolean } {
+	const streak = completed ? Math.min(currentStreak + 1, requiredConfirmations) : 0;
+	return { streak, shouldStop: streak >= requiredConfirmations };
+}
+
+export function extractRalphHandoff(text: string): string | null {
+	const lines = text.split(/\r?\n/);
+	const start = lines.findIndex((line) => line.trim() === HANDOFF_START_MARKER);
+	if (start < 0) return null;
+	const end = lines.slice(start + 1).findIndex((line) => line.trim() === HANDOFF_END_MARKER);
+	if (end < 0) return null;
+	return lines.slice(start, start + end + 2).join("\n").trim();
+}
+
+export interface IterationTaskOptions {
+	stopOnCompletion: boolean;
+	verificationPass: number;
+	handoffMode: HandoffMode;
+	handoff?: string | null;
+	artifactPath?: string | null;
+}
+
+export function buildIterationTask(originalTask: string, options: IterationTaskOptions): string {
+	const sections: string[] = [];
+	if (options.handoffMode !== "none" && (options.handoff || options.artifactPath)) {
+		const handoffLines = [
+			"Previous iteration context is advisory; the original task remains authoritative:",
+		];
+		if (options.handoffMode === "summary" && options.handoff) handoffLines.push(options.handoff);
+		if (options.artifactPath) {
+			handoffLines.push(`Full previous iteration artifact: ${options.artifactPath}`);
+			handoffLines.push("Read the artifact only when the structured handoff is insufficient.");
+		}
+		sections.push(handoffLines.join("\n"));
+	}
+	if (options.verificationPass > 0) {
+		sections.push(
+			`Verification pass ${options.verificationPass}: independently re-check the original task and provide evidence. Do not emit ${COMPLETION_MARKER} merely because a previous iteration claimed completion.`,
+		);
+	}
+	if (options.handoffMode === "summary") {
+		sections.push(
+			`At the end of this iteration, include a concise structured handoff between ${HANDOFF_START_MARKER} and ${HANDOFF_END_MARKER} with status, completed work, important facts/evidence, open questions, and next action.`,
+		);
+	}
+	if (options.stopOnCompletion) {
+		sections.push(
+			`When the original task is genuinely complete and verified, end the final assistant response with exactly ${COMPLETION_MARKER} on its own line. Do not emit ${COMPLETION_MARKER} for partial or in-progress work.`,
+		);
+	}
+	if (sections.length === 0) return originalTask;
+	return `${originalTask}\n\n[Ralph loop runtime context]\n${sections.join("\n\n")}`;
+}
+
+function applyIterationContextToParams(params: any, options: IterationTaskOptions): any {
+	const next = cloneLoopParams(params);
+	if (typeof next.task === "string") {
+		next.task = buildIterationTask(next.task, options);
+	}
+	if (Array.isArray(next.chain)) {
+		next.chain = next.chain.map((step: any, index: number) => ({
+			...step,
+			task: buildIterationTask(step.task, {
+				...options,
+				stopOnCompletion: options.stopOnCompletion && index === next.chain.length - 1,
+			}),
+		}));
+	}
+	return next;
+}
+
+function getCompletionText(details: SubagentDetails): string {
+	const lastResult = details.results[details.results.length - 1];
+	return lastResult ? getFinalAssistantText(lastResult.messages) : "";
 }
 
 function formatSteeringText(messages: string[]): string | null {
@@ -764,6 +872,18 @@ export const MAX_LOOP_ITERATIONS = 100;
 export const DEFAULT_CONDITION_TIMEOUT_MS = 30_000;
 export const MAX_CONDITION_TIMEOUT_MS = 300_000;
 export const DEFAULT_LOOP_SLEEP_MS = 1000;
+export const DEFAULT_STOP_ON_COMPLETION = true;
+export const DEFAULT_COMPLETION_CONFIRMATIONS = 3;
+export const MAX_COMPLETION_CONFIRMATIONS = 10;
+export const COMPLETION_MARKER = "RALPH_DONE";
+export const HANDOFF_START_MARKER = "RALPH_HANDOFF";
+export const HANDOFF_END_MARKER = "RALPH_HANDOFF_END";
+export const DEFAULT_HANDOFF_MODE: HandoffMode = "summary";
+
+const HandoffModeSchema = StringEnum(["none", "summary", "artifact"] as const, {
+	description: 'How previous iteration context is handed off. Default: "summary".',
+	default: "summary",
+});
 
 const LoopParams = Type.Object({
 	conditionCommand: Type.Optional(
@@ -781,6 +901,16 @@ const LoopParams = Type.Object({
 			description: `Maximum time for each condition command in ms (default ${DEFAULT_CONDITION_TIMEOUT_MS}, maximum ${MAX_CONDITION_TIMEOUT_MS}).`,
 		}),
 	),
+	stopOnCompletion: Type.Optional(
+		Type.Boolean({
+			description: `Stop after consecutive ${COMPLETION_MARKER} confirmations. Default: ${DEFAULT_STOP_ON_COMPLETION}.`,
+			default: DEFAULT_STOP_ON_COMPLETION,
+		}),
+	),
+	completionConfirmations: Type.Optional(
+		Type.Number({ description: `Consecutive completion confirmations required (default ${DEFAULT_COMPLETION_CONFIRMATIONS}, maximum ${MAX_COMPLETION_CONFIRMATIONS}).` }),
+	),
+	handoffMode: Type.Optional(HandoffModeSchema),
 	agent: Type.Optional(Type.String({ description: "Name of the agent to invoke (for single mode)" })),
 	task: Type.Optional(Type.String({ description: "Task to delegate (for single mode)" })),
 	chain: Type.Optional(Type.Array(ChainItem, { description: "Array of {agent, task} for sequential execution" })),
@@ -1085,6 +1215,50 @@ function writeLargeOutputToTempFile(prefix: string, output: string): string | nu
 		const id = crypto.randomBytes(8).toString("hex");
 		const filePath = path.join(os.tmpdir(), `pi-${prefix}-${id}.log`);
 		fs.writeFileSync(filePath, output, { encoding: "utf-8", mode: 0o600 });
+		return filePath;
+	} catch {
+		return null;
+	}
+}
+
+function createIterationArtifactDirectory(runId: string): string | null {
+	try {
+		return fs.mkdtempSync(path.join(os.tmpdir(), `pi-ralph-loop-${runId}-`));
+	} catch {
+		return null;
+	}
+}
+
+export function writeIterationArtifact(
+	directory: string | null,
+	iterationIndex: number,
+	details: SubagentDetails,
+	output: string,
+): string | null {
+	if (!directory) return null;
+	try {
+		const filePath = path.join(directory, `iteration-${iterationIndex}.md`);
+		let serializedDetails = "(structured details could not be serialized)";
+		try {
+			serializedDetails = JSON.stringify(details, null, 2);
+		} catch {
+			// Preserve the textual output even if a provider-specific detail is not serializable.
+		}
+		const content = [
+			`# Ralph loop iteration ${iterationIndex}`,
+			"",
+			"## Final output",
+			"",
+			output || "(no output)",
+			"",
+			"## Structured details",
+			"",
+			"```json",
+			serializedDetails,
+			"```",
+			"",
+		].join("\n");
+		fs.writeFileSync(filePath, content, { encoding: "utf-8", mode: 0o600 });
 		return filePath;
 	} catch {
 		return null;
@@ -1430,6 +1604,10 @@ export default function (pi: ExtensionAPI) {
 			if (loopControl.runId) parts.push(`Run: ${loopControl.runId}`);
 			parts.push(`Iterations: ${iterations}${maxLabel}`);
 			if (loopControl.status === "idle" && details?.stopReason) parts.push(`Last stop: ${details.stopReason}`);
+			if (details?.stopOnCompletion) {
+				parts.push(`Completion: ${details.completionStreak}/${details.completionConfirmations}`);
+			}
+			if (details?.handoffMode && details.handoffMode !== "none") parts.push(`Handoff: ${details.handoffMode}`);
 			if (steeringCount > 0) parts.push(`Steering queued: ${steeringCount}`);
 			if (followUpCount > 0) parts.push(`Follow-ups queued: ${followUpCount}`);
 			ctx.ui.notify(parts.join(" | "), "info");
@@ -1521,6 +1699,8 @@ export default function (pi: ExtensionAPI) {
 			"Supports model/thinking overrides like subagent.",
 			"Defaults to agent 'worker' and the latest user message when agent/task are omitted.",
 			`Defaults to ${DEFAULT_LOOP_MAX_ITERATIONS} iterations, with a maximum of ${MAX_LOOP_ITERATIONS} and a ${DEFAULT_CONDITION_TIMEOUT_MS}ms condition timeout.`,
+			`By default, stops after ${DEFAULT_COMPLETION_CONFIRMATIONS} consecutive verified ${COMPLETION_MARKER} signals from the final assistant output.`,
+			`Handoff defaults to ${DEFAULT_HANDOFF_MODE}; the original task is preserved and previous iteration context is appended.`,
 			"If conditionCommand is omitted, it is inferred from the task text or defaults to 'echo true'.",
 		].join(" "),
 		parameters: LoopParams,
@@ -1548,6 +1728,11 @@ export default function (pi: ExtensionAPI) {
 				steeringSent: [...loopControl.steeringSent],
 				followUpsSent: [...loopControl.followUpsSent],
 				status: loopControl.status,
+				stopOnCompletion: DEFAULT_STOP_ON_COMPLETION,
+				completionConfirmations: DEFAULT_COMPLETION_CONFIRMATIONS,
+				completionStreak: 0,
+				handoffMode: DEFAULT_HANDOFF_MODE,
+				artifactPaths: [],
 				...overrides,
 			});
 
@@ -1731,6 +1916,38 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
+			const stopOnCompletion = params.stopOnCompletion ?? DEFAULT_STOP_ON_COMPLETION;
+			if (typeof stopOnCompletion !== "boolean") {
+				return {
+					content: [{ type: "text", text: "stopOnCompletion must be a boolean." }],
+					details: buildDetails({ stopReason: "invalid-params", conditionCommand, conditionSource, maxIterations, sleepMs, conditionTimeoutMs, prompt: promptInfo }),
+					isError: true,
+				};
+			}
+
+			const completionConfirmations = parseLoopNumber(
+				params.completionConfirmations,
+				DEFAULT_COMPLETION_CONFIRMATIONS,
+				false,
+				MAX_COMPLETION_CONFIRMATIONS,
+			);
+			if (completionConfirmations === null) {
+				return {
+					content: [{ type: "text", text: `completionConfirmations must be a positive safe integer no greater than ${MAX_COMPLETION_CONFIRMATIONS}.` }],
+					details: buildDetails({ stopReason: "invalid-params", conditionCommand, conditionSource, maxIterations, sleepMs, conditionTimeoutMs, prompt: promptInfo }),
+					isError: true,
+				};
+			}
+
+			const handoffMode: HandoffMode = params.handoffMode ?? DEFAULT_HANDOFF_MODE;
+			if (handoffMode !== "none" && handoffMode !== "summary" && handoffMode !== "artifact") {
+				return {
+					content: [{ type: "text", text: "handoffMode must be one of: none, summary, artifact." }],
+					details: buildDetails({ stopReason: "invalid-params", conditionCommand, conditionSource, maxIterations, sleepMs, conditionTimeoutMs, prompt: promptInfo }),
+					isError: true,
+				};
+			}
+
 			const confirmProjectAgents = params.confirmProjectAgents ?? true;
 			const approved = confirmProjectAgents ? await confirmProjectAgentsOnce(loopParams, ctx) : true;
 			if (!approved) {
@@ -1780,6 +1997,11 @@ export default function (pi: ExtensionAPI) {
 				killed: false,
 				timedOut: false,
 			};
+			const artifactDirectory = handoffMode === "none" ? null : createIterationArtifactDirectory(invocationRunId);
+			const artifactPaths: string[] = [];
+			let previousHandoff: string | null = null;
+			let previousArtifactPath: string | null = null;
+			let completionStreak = 0;
 
 			const buildLoopDetails = (currentIterations: LoopIterationResult[]): RalphLoopDetails => {
 				const details: RalphLoopDetails = {
@@ -1798,6 +2020,11 @@ export default function (pi: ExtensionAPI) {
 					steeringSent: [...loopControl.steeringSent],
 					followUpsSent: [...loopControl.followUpsSent],
 					status: loopControl.status,
+					stopOnCompletion,
+					completionConfirmations,
+					completionStreak,
+					handoffMode,
+					artifactPaths: [...artifactPaths],
 				};
 				loopControl.iterations = currentIterations.length;
 				loopControl.lastDetails = details;
@@ -1892,7 +2119,16 @@ export default function (pi: ExtensionAPI) {
 				let runResult: LoopExecutionResult | null = null;
 				const steeringOnceCount = loopControl.steeringOnce.length;
 				const steeringText = formatSteeringText([...loopControl.steering, ...loopControl.steeringOnce]);
-				const iterationParams = applySteeringToParams(baseLoopParams, steeringText);
+				const iterationParams = applyIterationContextToParams(
+					applySteeringToParams(baseLoopParams, steeringText),
+					{
+						stopOnCompletion,
+						verificationPass: completionStreak,
+						handoffMode,
+						handoff: previousHandoff,
+						artifactPath: previousArtifactPath,
+					},
+				);
 				const queuedFollowUps = loopControl.followUps;
 				if (queuedFollowUps.length > 0) {
 					loopControl.followUps = [];
@@ -1919,6 +2155,16 @@ export default function (pi: ExtensionAPI) {
 					clearPausedState(loopControl);
 				}
 
+				const artifactPath = writeIterationArtifact(artifactDirectory, iterationIndex, runResult.details, runResult.output);
+				if (artifactPath) {
+					artifactPaths.push(artifactPath);
+					previousArtifactPath = artifactPath;
+				}
+				previousHandoff = handoffMode === "summary" ? extractRalphHandoff(getCompletionText(runResult.details)) : null;
+				const completion = !runResult.isError && stopOnCompletion && hasCompletionMarker(getCompletionText(runResult.details));
+				const streak = updateCompletionStreak(completionStreak, completion, completionConfirmations);
+				completionStreak = streak.streak;
+
 				iterations.push({
 					index: iterationIndex,
 					details: runResult.details,
@@ -1930,6 +2176,11 @@ export default function (pi: ExtensionAPI) {
 				if (runResult.isError) {
 					stopReason = "error";
 					errorMessage = runResult.output;
+					break;
+				}
+
+				if (stopOnCompletion && completionStreak >= completionConfirmations) {
+					stopReason = "agent-complete";
 					break;
 				}
 
@@ -1950,7 +2201,10 @@ export default function (pi: ExtensionAPI) {
 				`Condition timeout: ${conditionTimeoutMs}ms.`,
 				`Max iterations: ${maxIterations}.`,
 				`Sleep: ${sleepMs}ms.`,
+				`Completion: ${stopOnCompletion ? `${completionStreak}/${completionConfirmations} confirmations` : "disabled"}.`,
+				`Handoff: ${handoffMode}.`,
 			];
+			if (artifactPaths.length > 0) summaryLines.push(`Iteration artifacts: ${artifactPaths.join(", ")}`);
 
 			if (lastCondition.stdout) summaryLines.push(`Condition stdout: ${lastCondition.stdout}`);
 			if (lastCondition.stderr) summaryLines.push(`Condition stderr: ${lastCondition.stderr}`);
@@ -1997,6 +2251,9 @@ export default function (pi: ExtensionAPI) {
 			const maxIterations = args.maxIterations ?? DEFAULT_LOOP_MAX_ITERATIONS;
 			const sleepMs = args.sleepMs ?? DEFAULT_LOOP_SLEEP_MS;
 			const conditionTimeoutMs = args.conditionTimeoutMs ?? DEFAULT_CONDITION_TIMEOUT_MS;
+			const stopOnCompletion = args.stopOnCompletion ?? DEFAULT_STOP_ON_COMPLETION;
+			const completionConfirmations = args.completionConfirmations ?? DEFAULT_COMPLETION_CONFIRMATIONS;
+			const handoffMode = args.handoffMode ?? DEFAULT_HANDOFF_MODE;
 			const promptInfo = buildLoopPromptInfo(args);
 			let text =
 				theme.fg("toolTitle", theme.bold("ralph_loop ")) +
@@ -2009,6 +2266,7 @@ export default function (pi: ExtensionAPI) {
 				text += `\n  ${theme.fg("dim", `prompt: ${preview}${more}`)}`;
 			}
 			text += `\n  ${theme.fg("dim", `max:${maxIterations} sleep:${sleepMs}ms condition-timeout:${conditionTimeoutMs}ms`)}`;
+			text += `\n  ${theme.fg("dim", `completion:${stopOnCompletion ? `${completionConfirmations}x required` : "off"} handoff:${handoffMode}`)}`;
 			return new Text(text, 0, 0);
 		},
 
