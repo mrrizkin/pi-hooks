@@ -131,10 +131,17 @@ const tests: Array<[string, () => void | Promise<void>]> = [
     const details = { runId: "run-a", status: "idle", stopReason: "max-iterations", iterations: [] };
     const runs = discoverRalphLoopRuns([
       { type: "message", message: { role: "toolResult", toolName: "ralph_loop", toolCallId: "one", details } },
-      { type: "message", message: { role: "toolResult", toolName: "ralph_loop", toolCallId: "two", details: { ...details } } },
+      { type: "message", message: { role: "toolResult", toolName: "ralph_loop", toolCallId: "two", details: { runId: "run-b", status: "idle", iterations: [] } } },
     ], { ...details, status: "running" }, "run-a");
-    assert(runs.length === 1, "same run id should appear once");
-    assert(runs[0].active && runs[0].details.status === "running", "active snapshot should win");
+    assert(runs.length === 2, "distinct run ids should remain available");
+    assert(runs[0].runId === "run-a" && runs[0].active, "active run should be the first selection");
+    assert(runs[1].runId === "run-b" && !runs[1].active, "inactive runs should follow in history order");
+    assert(runs[0].details.status === "running", "active snapshot should win");
+
+    const activeNotPersisted = discoverRalphLoopRuns([
+      { type: "message", message: { role: "toolResult", toolName: "ralph_loop", toolCallId: "one", details: { runId: "run-b", status: "idle", iterations: [] } } },
+    ], { ...details, status: "running" }, "run-a");
+    assert(activeNotPersisted[0].runId === "run-a" && activeNotPersisted[0].active, "new active run should also be first");
   }],
   ["viewer hides thinking and remains viewport bounded", () => {
     const details = {

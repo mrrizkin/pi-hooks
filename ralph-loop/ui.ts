@@ -76,7 +76,10 @@ export function discoverRalphLoopRuns(
 			runs.set(runId, { runId, details: { ...activeDetails, runId }, active: Boolean(activeRunId) });
 		}
 	}
-	return Array.from(runs.values());
+	const discoveredRuns = Array.from(runs.values());
+	// Keep the active run as the default selection, regardless of where its
+	// persisted snapshot appeared in the session history.
+	return discoveredRuns.filter((run) => run.active).concat(discoveredRuns.filter((run) => !run.active));
 }
 
 export function formatRalphLoopRun(run: RalphLoopRun): string {
