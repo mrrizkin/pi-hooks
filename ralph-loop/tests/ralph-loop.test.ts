@@ -92,6 +92,7 @@ const tests: Array<[string, () => void | Promise<void>]> = [
       artifactPath: "/tmp/iteration-1.md",
     });
     assert(task.startsWith(original), "the original task must remain at the beginning");
+    assert(task.includes("Do not invoke ralph_loop") && task.includes("nested loop"), "subagents must be told not to create nested loops");
     assert(task.includes(handoff) && task.includes("/tmp/iteration-1.md"), "handoff should be appended separately");
     assert(task.includes("re-read the original task") && task.includes("appropriate checks or tests"), "completion guidance should require verification");
     assert(!task.startsWith(handoff), "handoff must not replace the original task");

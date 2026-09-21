@@ -235,7 +235,9 @@ export interface IterationTaskOptions {
 }
 
 export function buildIterationTask(originalTask: string, options: IterationTaskOptions): string {
-	const sections: string[] = [];
+	const sections: string[] = [
+		"You are already running as a Ralph loop subagent. Do not invoke ralph_loop, ask another agent to invoke it, or create a nested loop; work directly on the delegated task.",
+	];
 	if (options.handoffMode !== "none" && (options.handoff || options.artifactPath)) {
 		const handoffLines = [
 			"Previous iteration context is advisory; the original task remains authoritative:",
@@ -558,9 +560,11 @@ async function runSingleAgent(
 		let wasAborted = false;
 
 		const exitCode = await new Promise<number>((resolve) => {
-			const env = agent.permissionLevel
-				? { ...process.env, PI_PERMISSION_LEVEL: agent.permissionLevel }
-				: process.env;
+			const env = {
+				...process.env,
+				[RALPH_LOOP_DEPTH_ENV]: "1",
+				...(agent.permissionLevel ? { PI_PERMISSION_LEVEL: agent.permissionLevel } : {}),
+			};
 			const proc = spawn("pi", args, { cwd: cwd ?? defaultCwd, shell: false, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"], env });
 			let buffer = "";
 			let resolved = false;
@@ -882,6 +886,7 @@ export const MAX_LOOP_ITERATIONS = 100;
 export const DEFAULT_CONDITION_TIMEOUT_MS = 30_000;
 export const MAX_CONDITION_TIMEOUT_MS = 300_000;
 export const DEFAULT_LOOP_SLEEP_MS = 1000;
+export const RALPH_LOOP_DEPTH_ENV = "PI_RALPH_LOOP_DEPTH";
 // Completion markers are opt-in: a subagent can claim completion before the task is actually done.
 // maxIterations remains the reliable default termination bound.
 export const DEFAULT_STOP_ON_COMPLETION = false;
@@ -1383,6 +1388,8 @@ function formatLoopPromptItem(item: LoopPromptItem, maxTaskLength: number): stri
 }
 
 export default function (pi: ExtensionAPI) {
+	if (process.env[RALPH_LOOP_DEPTH_ENV] && process.env[RALPH_LOOP_DEPTH_ENV] !== "0") return;
+
 	const loopControl: LoopControlState = {
 		status: "idle",
 		runId: null,
@@ -1715,6 +1722,7 @@ export default function (pi: ExtensionAPI) {
 			"Run subagent tasks in a loop while a condition command exits successfully and prints 'true' to continue.",
 			"Supports single and chain modes.",
 			"Use it for iterative work that benefits from repeated fresh subagent passes; use a normal subagent for one-shot work.",
+			"Ralph subagents must work directly on the delegated task and must not invoke or create another ralph_loop.",
 			"Build task prompts as standalone objectives with acceptance criteria and workspace context; do not use a prompt that only says 'continue'.",
 			"For implementation or review work, ask each iteration to inspect the current state, make concrete progress, run appropriate checks, and report remaining work.",
 			"Supports model/thinking overrides like subagent.",

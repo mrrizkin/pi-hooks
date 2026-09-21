@@ -18,6 +18,7 @@ Enable only `ralph-loop` in `pi config`. Dependencies are installed automaticall
 - Uses a finite default of 10 iterations (maximum 100) and a 30-second condition timeout
 - Can supply max iterations, condition timeout, and minimum delay between each
 - Can optionally stop early after consecutive `RALPH_DONE` completion confirmations
+- Prevents Ralph subagents from creating nested Ralph loops
 - Can carry a structured handoff between iterations while preserving the original task
 - Optionally supply model and thinking
 - Interactive steering + control commands when running in UI mode
