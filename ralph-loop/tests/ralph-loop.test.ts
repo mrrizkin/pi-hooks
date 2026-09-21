@@ -67,7 +67,7 @@ const tests: Array<[string, () => void | Promise<void>]> = [
     assert(parseLoopNumber(0, DEFAULT_LOOP_MAX_ITERATIONS, true) === 0, "zero should be accepted when enabled");
   }],
   ["completion requires consecutive confirmations and preserves the original task", () => {
-    assert(DEFAULT_STOP_ON_COMPLETION, "completion stopping should be enabled by default");
+    assert(!DEFAULT_STOP_ON_COMPLETION, "completion stopping should be opt-in by default");
     assert(DEFAULT_COMPLETION_CONFIRMATIONS === 3, "three confirmations should be the default");
     assert(hasCompletionMarker(`verified\n${COMPLETION_MARKER}`), "a final marker should be detected");
     assert(!hasCompletionMarker(`${COMPLETION_MARKER}\nmore work`), "a non-final marker should not be detected");
@@ -93,6 +93,7 @@ const tests: Array<[string, () => void | Promise<void>]> = [
     });
     assert(task.startsWith(original), "the original task must remain at the beginning");
     assert(task.includes(handoff) && task.includes("/tmp/iteration-1.md"), "handoff should be appended separately");
+    assert(task.includes("re-read the original task") && task.includes("appropriate checks or tests"), "completion guidance should require verification");
     assert(!task.startsWith(handoff), "handoff must not replace the original task");
   }],
   ["artifacts preserve complete output without character truncation", () => {

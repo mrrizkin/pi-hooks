@@ -17,7 +17,7 @@ Enable only `ralph-loop` in `pi config`. Dependencies are installed automaticall
 - Takes a prompt and optional exit condition
 - Uses a finite default of 10 iterations (maximum 100) and a 30-second condition timeout
 - Can supply max iterations, condition timeout, and minimum delay between each
-- Can stop early after consecutive `RALPH_DONE` completion confirmations
+- Can optionally stop early after consecutive `RALPH_DONE` completion confirmations
 - Can carry a structured handoff between iterations while preserving the original task
 - Optionally supply model and thinking
 - Interactive steering + control commands when running in UI mode
@@ -50,6 +50,8 @@ Run ralph_loop with task "Explore this project and summarize its architecture", 
 
 The original task is retained on every iteration. Summary handoffs are advisory; complete prior output is retained in per-iteration artifacts when handoff is enabled.
 
+When calling `ralph_loop`, use a standalone task with the desired outcome, acceptance criteria, and relevant workspace context. For implementation or review work, tell each iteration to inspect the current state, make concrete progress, run checks, and report remaining work. Use `maxIterations` as the hard cap; leave `stopOnCompletion` disabled for fixed iteration counts. Enable it only when early stopping is useful and completion can be objectively verified—`RALPH_DONE` is only the subagent's claim, not independent proof.
+
 ## Examples
 
 - Use chain ralph loop to implement a quick fix, then write a brief self-review of the patch.
@@ -60,7 +62,7 @@ The original task is retained on every iteration. Summary handoffs are advisory;
 - `conditionCommand` must exit successfully and print exactly `true` to continue; any other output stops the loop.
 - `maxIterations` defaults to `10` when omitted and cannot exceed `100`.
 - `conditionTimeoutMs` defaults to `30000` and cannot exceed `300000`; a timeout or failed condition stops the loop.
-- `stopOnCompletion` defaults to `true`; the loop requires three consecutive final assistant responses ending in `RALPH_DONE` before stopping with `agent-complete`.
+- `stopOnCompletion` defaults to `false`; this prevents an unverified `RALPH_DONE` claim from shortening the requested iteration count. Set it to `true` to enable early stopping after three consecutive final assistant responses ending in `RALPH_DONE`.
 - `completionConfirmations` can change the required consecutive confirmation count (maximum `10`). A non-confirming iteration resets the streak.
 - `handoffMode` defaults to `summary`; use `none` to disable handoff or `artifact` to pass only the full-output artifact path. Full iteration artifacts are never character-truncated.
 - The original task is sent on every iteration. Previous handoff context is appended and never replaces it.

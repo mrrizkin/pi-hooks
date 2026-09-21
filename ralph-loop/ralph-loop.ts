@@ -259,7 +259,12 @@ export function buildIterationTask(originalTask: string, options: IterationTaskO
 	}
 	if (options.stopOnCompletion) {
 		sections.push(
-			`When the original task is genuinely complete and verified, end the final assistant response with exactly ${COMPLETION_MARKER} on its own line. Do not emit ${COMPLETION_MARKER} for partial or in-progress work.`,
+			[
+				`Use ${COMPLETION_MARKER} only as a completion control signal, never as a progress or status label.`,
+				`Before emitting it, re-read the original task, satisfy every requirement, verify the result with appropriate checks or tests, and resolve all known issues and open questions.`,
+				`If any requirement is incomplete, verification is missing, or you are uncertain, do not emit ${COMPLETION_MARKER}; continue working and explain what remains.`,
+				`Only after those checks pass, end the final assistant response with exactly ${COMPLETION_MARKER} on its own line.`,
+			].join(" "),
 		);
 	}
 	if (sections.length === 0) return originalTask;
@@ -861,7 +866,7 @@ const ThinkingLevel = StringEnum(["off", "minimal", "low", "medium", "high", "xh
 
 const ChainItem = Type.Object({
 	agent: Type.String({ description: "Name of the agent to invoke" }),
-	task: Type.String({ description: "Task with optional {previous} placeholder for prior output" }),
+	task: Type.String({ description: "Standalone task for this chain step, with optional {previous} placeholder for prior output" }),
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
 	model: Type.Optional(Type.String({ description: "Override the agent's model (e.g., 'claude-opus-4-5', 'gpt-5.2-codex')" })),
 	thinking: Type.Optional(ThinkingLevel),
@@ -877,7 +882,9 @@ export const MAX_LOOP_ITERATIONS = 100;
 export const DEFAULT_CONDITION_TIMEOUT_MS = 30_000;
 export const MAX_CONDITION_TIMEOUT_MS = 300_000;
 export const DEFAULT_LOOP_SLEEP_MS = 1000;
-export const DEFAULT_STOP_ON_COMPLETION = true;
+// Completion markers are opt-in: a subagent can claim completion before the task is actually done.
+// maxIterations remains the reliable default termination bound.
+export const DEFAULT_STOP_ON_COMPLETION = false;
 export const DEFAULT_COMPLETION_CONFIRMATIONS = 3;
 export const MAX_COMPLETION_CONFIRMATIONS = 10;
 export const COMPLETION_MARKER = "RALPH_DONE";
@@ -917,7 +924,7 @@ const LoopParams = Type.Object({
 	),
 	handoffMode: Type.Optional(HandoffModeSchema),
 	agent: Type.Optional(Type.String({ description: "Name of the agent to invoke (for single mode)" })),
-	task: Type.Optional(Type.String({ description: "Task to delegate (for single mode)" })),
+	task: Type.Optional(Type.String({ description: "Standalone objective with acceptance criteria; it is sent again on every iteration (for single mode)" })),
 	chain: Type.Optional(Type.Array(ChainItem, { description: "Array of {agent, task} for sequential execution" })),
 	agentScope: Type.Optional(AgentScopeSchema),
 	confirmProjectAgents: Type.Optional(
@@ -1707,10 +1714,14 @@ export default function (pi: ExtensionAPI) {
 		description: [
 			"Run subagent tasks in a loop while a condition command exits successfully and prints 'true' to continue.",
 			"Supports single and chain modes.",
+			"Use it for iterative work that benefits from repeated fresh subagent passes; use a normal subagent for one-shot work.",
+			"Build task prompts as standalone objectives with acceptance criteria and workspace context; do not use a prompt that only says 'continue'.",
+			"For implementation or review work, ask each iteration to inspect the current state, make concrete progress, run appropriate checks, and report remaining work.",
 			"Supports model/thinking overrides like subagent.",
 			"Defaults to agent 'worker' and the latest user message when agent/task are omitted.",
 			`Defaults to ${DEFAULT_LOOP_MAX_ITERATIONS} iterations, with a maximum of ${MAX_LOOP_ITERATIONS} and a ${DEFAULT_CONDITION_TIMEOUT_MS}ms condition timeout.`,
-			`By default, stops after ${DEFAULT_COMPLETION_CONFIRMATIONS} consecutive verified ${COMPLETION_MARKER} signals from the final assistant output.`,
+			"Set maxIterations to the desired hard cap; leave stopOnCompletion false for fixed/reliable iteration counts.",
+			`Completion stopping is opt-in via stopOnCompletion; enable it only when early completion is useful and the task has clear, verifiable acceptance criteria. ${COMPLETION_MARKER} is a subagent claim, not independent proof; when enabled, it requires ${DEFAULT_COMPLETION_CONFIRMATIONS} consecutive signals from the final assistant output.`,
 			`Handoff defaults to ${DEFAULT_HANDOFF_MODE}; the original task is preserved and previous iteration context is appended.`,
 			"If conditionCommand is omitted, it is inferred from the task text or defaults to 'echo true'.",
 		].join(" "),
