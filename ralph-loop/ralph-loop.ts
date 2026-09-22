@@ -226,6 +226,36 @@ export function extractRalphHandoff(text: string): string | null {
 	return lines.slice(start, start + end + 2).join("\n").trim();
 }
 
+function getHandoffField(handoff: string, field: string): string | null {
+	const match = handoff.match(new RegExp(`^\\s*${field}\\s*:\\s*(.+)$`, "im"));
+	return match?.[1]?.trim() || null;
+}
+
+function isEmptyHandoffValue(value: string): boolean {
+	return /^(?:none|no(?:ne)?|nil|n\/?a|not applicable|nothing|no further action|no outstanding(?: questions?)?|no open questions?|[-—])[\s.!]*$/i.test(value.trim());
+}
+
+export function isCompletionClaimValid(text: string, handoffMode: HandoffMode): boolean {
+	if (!hasCompletionMarker(text)) return false;
+	if (handoffMode !== "summary") return true;
+
+	const handoff = extractRalphHandoff(text);
+	if (!handoff) return false;
+
+	const status = getHandoffField(handoff, "Status");
+	if (!status) return false;
+	if (/\b(in[_ -]?progress|incomplete|unfinished|partial|blocked|pending|not\s+(?:yet\s+)?(?:complete|done|finished)|belum\s+(?:selesai|tuntas|lengkap))\b/i.test(status)) {
+		return false;
+	}
+	if (!/\b(?:complete|completed|done|finished|verified|resolved)\b/i.test(status)) return false;
+
+	for (const field of ["Open questions?", "Next action"]) {
+		const value = getHandoffField(handoff, field);
+		if (value !== null && !isEmptyHandoffValue(value)) return false;
+	}
+	return true;
+}
+
 export interface IterationTaskOptions {
 	stopOnCompletion: boolean;
 	verificationPass: number;
@@ -265,6 +295,7 @@ export function buildIterationTask(originalTask: string, options: IterationTaskO
 				`Use ${COMPLETION_MARKER} only as a completion control signal, never as a progress or status label.`,
 				`Before emitting it, re-read the original task, satisfy every requirement, verify the result with appropriate checks or tests, and resolve all known issues and open questions.`,
 				`If any requirement is incomplete, verification is missing, or you are uncertain, do not emit ${COMPLETION_MARKER}; continue working and explain what remains.`,
+				`When a structured ${HANDOFF_START_MARKER} is present, its status must explicitly indicate complete or verified, and its open questions and next action must be none before this marker is valid.`,
 				`Only after those checks pass, end the final assistant response with exactly ${COMPLETION_MARKER} on its own line.`,
 			].join(" "),
 		);
@@ -1730,6 +1761,7 @@ export default function (pi: ExtensionAPI) {
 			`Defaults to ${DEFAULT_LOOP_MAX_ITERATIONS} iterations, with a maximum of ${MAX_LOOP_ITERATIONS} and a ${DEFAULT_CONDITION_TIMEOUT_MS}ms condition timeout.`,
 			"Set maxIterations to the desired hard cap; leave stopOnCompletion false for fixed/reliable iteration counts.",
 			`Completion stopping is opt-in via stopOnCompletion; enable it only when early completion is useful and the task has clear, verifiable acceptance criteria. ${COMPLETION_MARKER} is a subagent claim, not independent proof; when enabled, it requires ${DEFAULT_COMPLETION_CONFIRMATIONS} consecutive signals from the final assistant output.`,
+			`In summary handoff mode, a ${COMPLETION_MARKER} claim is accepted only when the handoff status is complete or verified and has no open questions or next action.`,
 			`Handoff defaults to ${DEFAULT_HANDOFF_MODE}; the original task is preserved and previous iteration context is appended.`,
 			"If conditionCommand is omitted, it is inferred from the task text or defaults to 'echo true'.",
 		].join(" "),
@@ -2191,7 +2223,8 @@ export default function (pi: ExtensionAPI) {
 					previousArtifactPath = artifactPath;
 				}
 				previousHandoff = handoffMode === "summary" ? extractRalphHandoff(getCompletionText(runResult.details)) : null;
-				const completion = !runResult.isError && stopOnCompletion && hasCompletionMarker(getCompletionText(runResult.details));
+				const completionText = getCompletionText(runResult.details);
+				const completion = !runResult.isError && stopOnCompletion && isCompletionClaimValid(completionText, handoffMode);
 				const streak = updateCompletionStreak(completionStreak, completion, completionConfirmations);
 				completionStreak = streak.streak;
 

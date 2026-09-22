@@ -11,6 +11,7 @@ import registerRalphLoop, {
   COMPLETION_MARKER,
   extractRalphHandoff,
   hasCompletionMarker,
+  isCompletionClaimValid,
   MAX_CONDITION_TIMEOUT_MS,
   MAX_LOOP_ITERATIONS,
   parseLoopNumber,
@@ -71,6 +72,11 @@ const tests: Array<[string, () => void | Promise<void>]> = [
     assert(DEFAULT_COMPLETION_CONFIRMATIONS === 3, "three confirmations should be the default");
     assert(hasCompletionMarker(`verified\n${COMPLETION_MARKER}`), "a final marker should be detected");
     assert(!hasCompletionMarker(`${COMPLETION_MARKER}\nmore work`), "a non-final marker should not be detected");
+    const incompleteHandoff = `RALPH_HANDOFF\nStatus: in_progress\nOpen questions: none\nNext action: finish the implementation\nRALPH_HANDOFF_END\n${COMPLETION_MARKER}`;
+    assert(!isCompletionClaimValid(incompleteHandoff, "summary"), "an incomplete handoff must invalidate RALPH_DONE");
+    const completeHandoff = `RALPH_HANDOFF\nStatus: complete and verified\nOpen questions: none\nNext action: none\nRALPH_HANDOFF_END\n${COMPLETION_MARKER}`;
+    assert(isCompletionClaimValid(completeHandoff, "summary"), "a complete verified handoff may validate RALPH_DONE");
+    assert(isCompletionClaimValid(COMPLETION_MARKER, "none"), "non-summary handoff modes may use the marker directly");
 
     let streak = updateCompletionStreak(0, true, 3);
     assert(streak.streak === 1 && !streak.shouldStop, "first confirmation should not stop");

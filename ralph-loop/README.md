@@ -64,7 +64,7 @@ When calling `ralph_loop`, use a standalone task with the desired outcome, accep
 - `maxIterations` defaults to `10` when omitted and cannot exceed `100`.
 - `conditionTimeoutMs` defaults to `30000` and cannot exceed `300000`; a timeout or failed condition stops the loop.
 - `stopOnCompletion` defaults to `false`; this prevents an unverified `RALPH_DONE` claim from shortening the requested iteration count. Set it to `true` to enable early stopping after three consecutive final assistant responses ending in `RALPH_DONE`.
-- `completionConfirmations` can change the required consecutive confirmation count (maximum `10`). A non-confirming iteration resets the streak.
+- `completionConfirmations` can change the required consecutive confirmation count (maximum `10`). A non-confirming iteration resets the streak. In `summary` handoff mode, `RALPH_DONE` is accepted only when the handoff says the work is complete/verified with no open questions or next action.
 - `handoffMode` defaults to `summary`; use `none` to disable handoff or `artifact` to pass only the full-output artifact path. Full iteration artifacts are never character-truncated.
 - The original task is sent on every iteration. Previous handoff context is appended and never replaces it.
 - Includes a built-in `worker` fallback; user/project agents override it if present.
