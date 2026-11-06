@@ -1,0 +1,14 @@
+packages:
+  - checkpoint
+  - lsp
+  - permission
+  - ralph-loop
+  - repeat
+  - token-rate
+
+# Packages that need lifecycle scripts (native binaries / codegen).
+allowBuilds:
+  '@google/genai': true
+  esbuild: true
+  koffi: true
+  protobufjs: true

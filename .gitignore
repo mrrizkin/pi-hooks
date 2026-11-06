@@ -4,9 +4,9 @@ pi-session-*.html
 # Node modules
 node_modules/
 
-# Package locks
+# Package locks (pnpm-lock.yaml IS committed)
 package-lock.json
+npm-shrinkwrap.json
 yarn.lock
-pnpm-lock.yaml
 bun.lockb
 bun.lock

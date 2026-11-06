@@ -136,13 +136,15 @@ When switching from the upstream/npm package, remove `npm:pi-hooks` first and in
 From the repository root:
 
 ```bash
-npm install
-npm run typecheck
-npm test
-npm run smoke-import
+pnpm install
+pnpm typecheck
+pnpm test
+pnpm smoke-import
 ```
 
-`npm test` runs checkpoint, permission, LSP unit/integration tests, and Ralph-loop lifecycle tests. Integration tests skip language-specific checks when their server binary is not installed.
+The repo is a pnpm workspace: one lockfile and one shared `node_modules` (deps are hard-linked from pnpm's global store, so the 6 sub-packages no longer each download their own copy of `typescript`, `esbuild`, `@earendil-works/*`, etc.).
+
+`pnpm test` runs checkpoint, permission, LSP unit/integration tests, and Ralph-loop lifecycle tests. Integration tests skip language-specific checks when their server binary is not installed.
 
 ## License
 
