@@ -86,7 +86,7 @@ let configCacheTime = 0;
 /** Cache TTL in milliseconds - balance between responsiveness and performance */
 const CONFIG_CACHE_TTL = 5000; // 5 seconds
 
-let regexCache: Map<string, RegExp> = new Map();
+const regexCache: Map<string, RegExp> = new Map();
 /** Maximum cached regex patterns to prevent memory exhaustion */
 const MAX_REGEX_CACHE_SIZE = 500;
 
@@ -187,7 +187,7 @@ function globToRegex(pattern: string): RegExp {
 
     // Escape regex special chars first (except * and ? which we handle specially)
     // Note: - is not special outside character classes, so we don't need to escape it
-    let regex = pattern
+    const regex = pattern
       .replace(/[.+^${}()|[\]\\]/g, '\\$&')
       .replace(/\*/g, '.*') // * -> match any characters
       .replace(/\?/g, '.'); // ? -> match single character
@@ -407,7 +407,7 @@ function hasDangerousExpansion(command: string): boolean {
   const braceExpansions = command.match(/\$\{[^}]+\}/g) || [];
   for (const expansion of braceExpansions) {
     // Check for nested $() or backticks inside ${...}
-    if (/\$\(|\`/.test(expansion)) {
+    if (/\$\(|`/.test(expansion)) {
       return true;
     }
   }
@@ -424,14 +424,6 @@ function detectShellTricks(command: string): boolean {
     return true;
   }
   return false;
-}
-
-/**
- * Check if a command contains arithmetic expansion $((..))
- * Used to avoid false positives from shell-quote parsing
- */
-function hasArithmeticExpansion(command: string): boolean {
-  return /\$\(\(/.test(command);
 }
 
 // Output redirection operators that write to files

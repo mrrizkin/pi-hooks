@@ -5,7 +5,7 @@
  * It has no dependencies on the pi-coding-agent hook system.
  */
 
-import { spawn } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
 import { mkdtemp, rm } from "fs/promises";
 import { statSync, readdirSync } from "fs";
 import { tmpdir } from "os";
@@ -128,7 +128,7 @@ function runGit(args: string[], cwd: string, opts: GitOptions = {}): Promise<str
   }
 
   return new Promise((resolve, reject) => {
-    let proc;
+    let proc: ChildProcess;
     try {
       proc = spawn("git", args, {
         cwd,
@@ -142,16 +142,16 @@ function runGit(args: string[], cwd: string, opts: GitOptions = {}): Promise<str
 
     let stdout = "";
     let stderr = "";
-    proc.stdout.on("data", (data: Buffer) => { stdout += data.toString(); });
-    proc.stderr.on("data", (data: Buffer) => { stderr += data.toString(); });
+    proc.stdout?.on("data", (data: Buffer) => { stdout += data.toString(); });
+    proc.stderr?.on("data", (data: Buffer) => { stderr += data.toString(); });
     proc.on("close", (code: number | null) => {
       if (code === 0) resolve(opts.trimOutput === false ? stdout : stdout.trim());
       else reject(new Error(stderr.trim() || `git ${args.join(" ")} failed with code ${code}`));
     });
     proc.on("error", reject);
 
-    if (opts.input !== undefined) proc.stdin.end(opts.input);
-    else proc.stdin.end();
+    if (opts.input !== undefined) proc.stdin?.end(opts.input);
+    else proc.stdin?.end();
   });
 }
 
@@ -173,7 +173,7 @@ export function gitLowPriorityArgs(args: string[], cwd: string): Promise<string>
     return Promise.reject(new Error("Invalid git arguments"));
   }
   return new Promise((resolve, reject) => {
-    let proc;
+    let proc: ChildProcess;
     try {
       proc = spawn("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
     } catch (error) {
@@ -182,8 +182,8 @@ export function gitLowPriorityArgs(args: string[], cwd: string): Promise<string>
     }
     let stdout = "";
     let stderr = "";
-    proc.stdout.on("data", (data: Buffer) => { stdout += data.toString(); });
-    proc.stderr.on("data", (data: Buffer) => { stderr += data.toString(); });
+    proc.stdout?.on("data", (data: Buffer) => { stdout += data.toString(); });
+    proc.stderr?.on("data", (data: Buffer) => { stderr += data.toString(); });
     proc.on("close", (code: number | null) => {
       if (code === 0) resolve(stdout.trim());
       else reject(new Error(stderr.trim() || `git ${args.join(" ")} failed with code ${code}`));
@@ -316,13 +316,6 @@ function isPathWithinDir(path: string, dir: string): boolean {
 function isPathWithinAnyDir(path: string, dirs: Set<string>): boolean {
   for (const dir of dirs) {
     if (isPathWithinDir(path, dir)) return true;
-  }
-  return false;
-}
-
-function isPathAncestorOfAnyDir(path: string, dirs: Set<string>): boolean {
-  for (const dir of dirs) {
-    if (isPathWithinDir(dir, path)) return true;
   }
   return false;
 }
@@ -553,8 +546,8 @@ async function getFilesToAdd(
   );
 
   const filesToAddSet = new Set<string>();
-  status.trackedPaths.forEach((path) => filesToAddSet.add(path));
-  untrackedFilesForIndex.forEach((path) => filesToAddSet.add(path));
+  for (const path of status.trackedPaths) filesToAddSet.add(path);
+  for (const path of untrackedFilesForIndex) filesToAddSet.add(path);
 
   return {
     filtered: [...filesToAddSet],

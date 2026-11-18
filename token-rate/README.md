@@ -25,8 +25,17 @@ Enable `token-rate` in `pi config`. Dependencies are installed automatically dur
 
 ```
 token-rate/
-  token-rate.ts  # Extension entry point + status updates
-  package.json   # Declares extension via "pi" field
+  token-rate.ts       # Extension entry point + status updates
+  token-rate-core.ts  # Pure TPS accounting (unit tested)
+  tests/
+    token-rate.test.ts
+  package.json        # Declares extension via "pi" field
+```
+
+## Testing
+
+```bash
+pnpm -C token-rate test
 ```
 
 ## License

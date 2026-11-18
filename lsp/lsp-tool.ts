@@ -211,7 +211,7 @@ Use bash to find files: find src -name "*.ts" -type f`,
     parameters: LspParams,
 
     async execute(_toolCallId, params, signalArg, onUpdateArg, ctxArg) {
-      const { signal, onUpdate, ctx } = normalizeExecuteArgs(onUpdateArg, ctxArg, signalArg);
+      const { signal, ctx } = normalizeExecuteArgs(onUpdateArg, ctxArg, signalArg);
       if (signal?.aborted) return cancelledToolResult();
       const manager = getOrCreateManager(ctx.cwd);
       const { action, file, files, line, column, endLine, endColumn, query, newName, apply, severity } = params as LspParamsType;

@@ -14,9 +14,9 @@
 import * as path from "node:path";
 import * as fs from "node:fs";
 import * as os from "node:os";
-import { type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { type Diagnostic } from "vscode-languageserver-protocol";
+import type { Diagnostic } from "vscode-languageserver-protocol";
 import { numberedSelect } from "./ui.js";
 import { formatDiagnostic, getOrCreateManager, shutdownManager } from "./lsp-core.js";
 
@@ -72,7 +72,7 @@ interface HookConfigEntry {
 export default function (pi: ExtensionAPI) {
   type LspActivity = "idle" | "loading" | "working";
 
-  let activeClients: Set<string> = new Set();
+  const activeClients: Set<string> = new Set();
   let statusUpdateFn: ((key: string, text: string | undefined) => void) | null = null;
   let hookMode: HookMode = DEFAULT_HOOK_MODE;
   let hookScope: HookScope = "global";

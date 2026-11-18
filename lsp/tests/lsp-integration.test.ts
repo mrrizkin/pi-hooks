@@ -94,9 +94,11 @@ test("typescript: detects type errors", async () => {
     const { diagnostics } = await manager.touchFileAndWait(file, 10000);
 
     assert(diagnostics.length > 0, `Expected errors, got ${diagnostics.length}`);
+    const messageText = (message: { value?: string } | string) =>
+      typeof message === "string" ? message : (message.value ?? "");
     assert(
-      diagnostics.some(d => d.message.toLowerCase().includes("type") || d.severity === 1),
-      `Expected type error, got: ${diagnostics.map(d => d.message).join(", ")}`
+      diagnostics.some(d => messageText(d.message).toLowerCase().includes("type") || d.severity === 1),
+      `Expected type error, got: ${diagnostics.map(d => messageText(d.message)).join(", ")}`
     );
   } finally {
     await manager.shutdown();
