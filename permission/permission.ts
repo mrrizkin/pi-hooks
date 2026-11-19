@@ -79,7 +79,7 @@ function playPermissionSound(): void {
   const isMac = process.platform === "darwin";
 
   if (isMac) {
-    exec('afplay /System/Library/Sounds/Funk.aiff 2>/dev/null', (err) => {
+    exec("afplay /System/Library/Sounds/Funk.aiff 2>/dev/null", (err) => {
       if (err) process.stdout.write("\x07");
     });
   } else {
@@ -187,7 +187,7 @@ function setLevel(
   state: PermissionState,
   level: PermissionLevel,
   saveGlobally: boolean,
-  ctx: any
+  ctx: any,
 ): void {
   state.currentLevel = level;
   state.isSessionOnly = !saveGlobally;
@@ -203,7 +203,7 @@ function setMode(
   state: PermissionState,
   mode: PermissionMode,
   saveGlobally: boolean,
-  _ctx: any
+  _ctx: any,
 ): void {
   state.permissionMode = mode;
   state.isModeSessionOnly = !saveGlobally;
@@ -220,7 +220,7 @@ function setMode(
 async function handleConfigSubcommand(
   _state: PermissionState,
   args: string,
-  ctx: any
+  ctx: any,
 ): Promise<void> {
   const parts = args.trim().split(/\s+/);
   const action = parts[0];
@@ -270,13 +270,13 @@ Edit ~/.pi/agent/settings.json directly for full control:
 export async function handlePermissionCommand(
   state: PermissionState,
   args: string,
-  ctx: any
+  ctx: any,
 ): Promise<void> {
   const arg = args.trim().toLowerCase();
 
   // Handle config subcommand
   if (arg === "config" || arg.startsWith("config ")) {
-    const configArgs = arg.replace(/^config\s*/, '');
+    const configArgs = arg.replace(/^config\s*/, "");
     await handleConfigSubcommand(state, configArgs, ctx);
     return;
   }
@@ -306,7 +306,7 @@ export async function handlePermissionCommand(
   if (!hasInteractiveUI(ctx)) {
     ctx.ui.notify(
       `Current permission: ${LEVEL_INFO[state.currentLevel].label} (${LEVEL_INFO[state.currentLevel].desc})`,
-      "info"
+      "info",
     );
     return;
   }
@@ -337,7 +337,7 @@ export async function handlePermissionCommand(
 export async function handlePermissionModeCommand(
   state: PermissionState,
   args: string,
-  ctx: any
+  ctx: any,
 ): Promise<void> {
   const arg = args.trim().toLowerCase();
 
@@ -364,7 +364,7 @@ export async function handlePermissionModeCommand(
   if (!hasInteractiveUI(ctx)) {
     ctx.ui.notify(
       `Current permission mode: ${PERMISSION_MODE_INFO[state.permissionMode].label} (${PERMISSION_MODE_INFO[state.permissionMode].desc})`,
-      "info"
+      "info",
     );
     return;
   }
@@ -417,7 +417,10 @@ export function handleSessionStart(state: PermissionState, ctx: any): void {
     if (state.currentLevel === "bypassed") {
       ctx.ui.notify("⚠️ Permission bypassed - all checks disabled!", "warning");
     } else if (!isQuietMode(ctx)) {
-      ctx.ui.notify(`Permission: ${LEVEL_INFO[state.currentLevel].label} (use /permission to change)`, "info");
+      ctx.ui.notify(
+        `Permission: ${LEVEL_INFO[state.currentLevel].label} (use /permission to change)`,
+        "info",
+      );
     }
     if (state.permissionMode === "block") {
       ctx.ui.notify("Permission mode: Block (use /permission-mode to change)", "info");
@@ -429,7 +432,7 @@ export function handleSessionStart(state: PermissionState, ctx: any): void {
 export async function handleBashToolCall(
   state: PermissionState,
   command: string,
-  ctx: any
+  ctx: any,
 ): Promise<{ block: true; reason: string } | undefined> {
   if (state.currentLevel === "bypassed") return undefined;
 
@@ -441,7 +444,7 @@ export async function handleBashToolCall(
       return {
         block: true,
         reason: `Dangerous command requires confirmation: ${command}
-User can re-run with: PI_PERMISSION_LEVEL=bypassed pi -p "..."`
+User can re-run with: PI_PERMISSION_LEVEL=bypassed pi -p "..."`,
       };
     }
 
@@ -449,15 +452,12 @@ User can re-run with: PI_PERMISSION_LEVEL=bypassed pi -p "..."`
       return {
         block: true,
         reason: `Blocked by permission mode (block). Dangerous command: ${command}
-Use /permission-mode ask to enable confirmations.`
+Use /permission-mode ask to enable confirmations.`,
       };
     }
 
     playPermissionSound();
-    const choice = await numberedSelect(ctx,
-      `⚠️ Dangerous command`,
-      ["Allow once", "Cancel"]
-    );
+    const choice = await numberedSelect(ctx, `⚠️ Dangerous command`, ["Allow once", "Cancel"]);
 
     if (choice !== "Allow once") {
       return { block: true, reason: "Cancelled" };
@@ -480,7 +480,7 @@ Use /permission-mode ask to enable confirmations.`
       block: true,
       reason: `Blocked by permission (${state.currentLevel}). Command: ${command}
 Allowed at this level: ${LEVEL_ALLOWED_DESC[state.currentLevel]}
-User can re-run with: PI_PERMISSION_LEVEL=${requiredLevel} pi -p "..."`
+User can re-run with: PI_PERMISSION_LEVEL=${requiredLevel} pi -p "..."`,
     };
   }
 
@@ -489,16 +489,17 @@ User can re-run with: PI_PERMISSION_LEVEL=${requiredLevel} pi -p "..."`
       block: true,
       reason: `Blocked by permission (${state.currentLevel}, mode: block). Command: ${command}
 Requires ${requiredInfo.label}. Allowed at this level: ${LEVEL_ALLOWED_DESC[state.currentLevel]}
-Use /permission ${requiredLevel} or /permission-mode ask to enable prompts.`
+Use /permission ${requiredLevel} or /permission-mode ask to enable prompts.`,
     };
   }
 
   // Interactive mode: prompt
   playPermissionSound();
-  const choice = await numberedSelect(ctx,
-    `Requires ${requiredInfo.label}`,
-    ["Allow once", `Allow all (${requiredInfo.label})`, "Cancel"]
-  );
+  const choice = await numberedSelect(ctx, `Requires ${requiredInfo.label}`, [
+    "Allow once",
+    `Allow all (${requiredInfo.label})`,
+    "Cancel",
+  ]);
 
   if (choice === "Allow once") return undefined;
 
@@ -521,10 +522,10 @@ export interface WriteToolCallOptions {
 
 /** Handle write/edit tool_call - check permission and prompt if needed */
 export async function handleWriteToolCall(
-  opts: WriteToolCallOptions
+  opts: WriteToolCallOptions,
 ): Promise<{ block: true; reason: string } | undefined> {
   const { state, toolName, filePath, ctx } = opts;
-  
+
   if (state.currentLevel === "bypassed") return undefined;
 
   if (LEVEL_INDEX[state.currentLevel] >= LEVEL_INDEX.low) return undefined;
@@ -538,7 +539,7 @@ export async function handleWriteToolCall(
       block: true,
       reason: `Blocked by permission (${state.currentLevel}). ${action}: ${filePath}
 Allowed at this level: ${LEVEL_ALLOWED_DESC[state.currentLevel]}
-User can re-run with: PI_PERMISSION_LEVEL=low pi -p "..."`
+User can re-run with: PI_PERMISSION_LEVEL=low pi -p "..."`,
     };
   }
 
@@ -547,16 +548,13 @@ User can re-run with: PI_PERMISSION_LEVEL=low pi -p "..."`
       block: true,
       reason: `Blocked by permission (${state.currentLevel}, mode: block). ${action}: ${filePath}
 Requires Low. Allowed at this level: ${LEVEL_ALLOWED_DESC[state.currentLevel]}
-Use /permission low or /permission-mode ask to enable prompts.`
+Use /permission low or /permission-mode ask to enable prompts.`,
     };
   }
 
   // Interactive mode: prompt
   playPermissionSound();
-  const choice = await numberedSelect(ctx,
-    message,
-    ["Allow once", "Allow all (Low)", "Cancel"]
-  );
+  const choice = await numberedSelect(ctx, message, ["Allow once", "Allow all (Low)", "Cancel"]);
 
   if (choice === "Allow once") return undefined;
 

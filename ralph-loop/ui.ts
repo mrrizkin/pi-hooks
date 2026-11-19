@@ -1,6 +1,12 @@
 /** Lightweight, overlay-only UI for browsing ralph-loop history. */
 
-import { matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
+import {
+	matchesKey,
+	truncateToWidth,
+	visibleWidth,
+	wrapTextWithAnsi,
+	type Component,
+} from "@earendil-works/pi-tui";
 import {
 	AssistantMessageComponent,
 	ToolExecutionComponent,
@@ -28,30 +34,32 @@ export const DEFAULT_RALPH_VIEW_WIDTH_PERCENT = 90;
 export const DEFAULT_RALPH_VIEW_HEIGHT_PERCENT = 90;
 
 export interface RalphLoopOverlayConfig {
-  widthPercent: number;
-  heightPercent: number;
+	widthPercent: number;
+	heightPercent: number;
 }
 
 export function parseOverlayPercent(value: unknown, fallback: number): number {
-  if (typeof value !== "string" && typeof value !== "number") return fallback;
-  const text = String(value).trim().replace(/%$/, "");
-  if (!text || !/^\d+(?:\.\d+)?$/.test(text)) return fallback;
-  const parsed = Number(text);
-  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 100) return fallback;
-  return parsed;
+	if (typeof value !== "string" && typeof value !== "number") return fallback;
+	const text = String(value).trim().replace(/%$/, "");
+	if (!text || !/^\d+(?:\.\d+)?$/.test(text)) return fallback;
+	const parsed = Number(text);
+	if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 100) return fallback;
+	return parsed;
 }
 
-export function getRalphLoopOverlayConfig(env: Record<string, unknown> = process.env): RalphLoopOverlayConfig {
-  return {
-    widthPercent: parseOverlayPercent(
-      env.RALPH_VIEW_WIDTH_PERCENT ?? env.RALPH_VIEW_WIDTH,
-      DEFAULT_RALPH_VIEW_WIDTH_PERCENT,
-    ),
-    heightPercent: parseOverlayPercent(
-      env.RALPH_VIEW_HEIGHT_PERCENT ?? env.RALPH_VIEW_HEIGHT,
-      DEFAULT_RALPH_VIEW_HEIGHT_PERCENT,
-    ),
-  };
+export function getRalphLoopOverlayConfig(
+	env: Record<string, unknown> = process.env,
+): RalphLoopOverlayConfig {
+	return {
+		widthPercent: parseOverlayPercent(
+			env.RALPH_VIEW_WIDTH_PERCENT ?? env.RALPH_VIEW_WIDTH,
+			DEFAULT_RALPH_VIEW_WIDTH_PERCENT,
+		),
+		heightPercent: parseOverlayPercent(
+			env.RALPH_VIEW_HEIGHT_PERCENT ?? env.RALPH_VIEW_HEIGHT,
+			DEFAULT_RALPH_VIEW_HEIGHT_PERCENT,
+		),
+	};
 }
 
 /** Discover persisted ralph-loop results without constructing any UI components. */
@@ -64,22 +72,31 @@ export function discoverRalphLoopRuns(
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
 		const message = entry?.type === "message" ? entry.message : undefined;
-		if (message?.role !== "toolResult" || message.toolName !== "ralph_loop" || !message.details) continue;
-		const runId = typeof message.details.runId === "string" && message.details.runId
-			? message.details.runId
-			: `legacy-${message.toolCallId || i}`;
-		if (!runs.has(runId)) runs.set(runId, { runId, details: { ...message.details, runId }, active: false });
+		if (message?.role !== "toolResult" || message.toolName !== "ralph_loop" || !message.details)
+			continue;
+		const runId =
+			typeof message.details.runId === "string" && message.details.runId
+				? message.details.runId
+				: `legacy-${message.toolCallId || i}`;
+		if (!runs.has(runId))
+			runs.set(runId, { runId, details: { ...message.details, runId }, active: false });
 	}
 	if (activeDetails) {
 		const runId = activeRunId || activeDetails.runId;
 		if (typeof runId === "string" && runId) {
-			runs.set(runId, { runId, details: { ...activeDetails, runId }, active: Boolean(activeRunId) });
+			runs.set(runId, {
+				runId,
+				details: { ...activeDetails, runId },
+				active: Boolean(activeRunId),
+			});
 		}
 	}
 	const discoveredRuns = Array.from(runs.values());
 	// Keep the active run as the default selection, regardless of where its
 	// persisted snapshot appeared in the session history.
-	return discoveredRuns.filter((run) => run.active).concat(discoveredRuns.filter((run) => !run.active));
+	return discoveredRuns
+		.filter((run) => run.active)
+		.concat(discoveredRuns.filter((run) => !run.active));
 }
 
 export function formatRalphLoopRun(run: RalphLoopRun): string {
@@ -90,7 +107,10 @@ export function formatRalphLoopRun(run: RalphLoopRun): string {
 }
 
 /** Select a run before constructing the viewer. */
-export async function selectRalphLoopRun(ctx: any, runs: RalphLoopRun[]): Promise<RalphLoopRun | null> {
+export async function selectRalphLoopRun(
+	ctx: any,
+	runs: RalphLoopRun[],
+): Promise<RalphLoopRun | null> {
 	if (runs.length === 0) return null;
 	const labels = runs.map(formatRalphLoopRun);
 	if (typeof ctx?.ui?.select === "function") {
@@ -99,45 +119,55 @@ export async function selectRalphLoopRun(ctx: any, runs: RalphLoopRun[]): Promis
 		return index >= 0 ? runs[index] : null;
 	}
 	if (typeof ctx?.ui?.custom !== "function") return null;
-	return ctx.ui.custom((tui: any, _theme: any, _keybindings: any, done: (run: RalphLoopRun | null) => void) => {
-		let selected = 0;
-		const visibleCount = () => {
-			const rows = Number(tui?.terminal?.rows);
-			return Math.max(1, Math.min(runs.length, Number.isFinite(rows) && rows > 0 ? rows - 5 : 12));
-		};
-		const render = (width: number) => {
-			const count = visibleCount();
-			const start = Math.max(0, Math.min(selected - Math.floor(count / 2), runs.length - count));
-			const end = Math.min(runs.length, start + count);
-			const lines = ["Select a ralph-loop run", ""];
-			if (start > 0) lines.push("↑ more above");
-			for (let index = start; index < end; index++) {
-				lines.push(`${index === selected ? "▸" : " "} ${labels[index]}`);
-			}
-			if (end < runs.length) lines.push("↓ more below");
-			return lines.map((line) => truncateToWidth(line, Math.max(1, width)));
-		};
-		return {
-			render,
-			invalidate: () => {},
-			handleInput: (data: string) => {
+	return ctx.ui.custom(
+		(tui: any, _theme: any, _keybindings: any, done: (run: RalphLoopRun | null) => void) => {
+			let selected = 0;
+			const visibleCount = () => {
+				const rows = Number(tui?.terminal?.rows);
+				return Math.max(
+					1,
+					Math.min(runs.length, Number.isFinite(rows) && rows > 0 ? rows - 5 : 12),
+				);
+			};
+			const render = (width: number) => {
 				const count = visibleCount();
-				if (matchesKey(data, "up")) selected = (selected - 1 + runs.length) % runs.length;
-				else if (matchesKey(data, "down")) selected = (selected + 1) % runs.length;
-				else if (matchesKey(data, "pageUp")) selected = Math.max(0, selected - count);
-				else if (matchesKey(data, "pageDown")) selected = Math.min(runs.length - 1, selected + count);
-				else if (matchesKey(data, "home")) selected = 0;
-				else if (matchesKey(data, "end")) selected = runs.length - 1;
-				else if (matchesKey(data, "enter") || data === "\n") return done(runs[selected]);
-				else if (matchesKey(data, "escape") || data === "\x1b") return done(null);
-				else return;
-				tui?.requestRender?.();
-			},
-		};
-	});
+				const start = Math.max(0, Math.min(selected - Math.floor(count / 2), runs.length - count));
+				const end = Math.min(runs.length, start + count);
+				const lines = ["Select a ralph-loop run", ""];
+				if (start > 0) lines.push("↑ more above");
+				for (let index = start; index < end; index++) {
+					lines.push(`${index === selected ? "▸" : " "} ${labels[index]}`);
+				}
+				if (end < runs.length) lines.push("↓ more below");
+				return lines.map((line) => truncateToWidth(line, Math.max(1, width)));
+			};
+			return {
+				render,
+				invalidate: () => {},
+				handleInput: (data: string) => {
+					const count = visibleCount();
+					if (matchesKey(data, "up")) selected = (selected - 1 + runs.length) % runs.length;
+					else if (matchesKey(data, "down")) selected = (selected + 1) % runs.length;
+					else if (matchesKey(data, "pageUp")) selected = Math.max(0, selected - count);
+					else if (matchesKey(data, "pageDown"))
+						selected = Math.min(runs.length - 1, selected + count);
+					else if (matchesKey(data, "home")) selected = 0;
+					else if (matchesKey(data, "end")) selected = runs.length - 1;
+					else if (matchesKey(data, "enter") || data === "\n") return done(runs[selected]);
+					else if (matchesKey(data, "escape") || data === "\x1b") return done(null);
+					else return;
+					tui?.requestRender?.();
+				},
+			};
+		},
+	);
 }
 
-export function clampLoopViewerOffset(offset: number, totalLines: number, viewportLines: number): number {
+export function clampLoopViewerOffset(
+	offset: number,
+	totalLines: number,
+	viewportLines: number,
+): number {
 	const maxOffset = Math.max(0, totalLines - Math.max(1, viewportLines));
 	return Math.max(0, Math.min(Math.max(0, offset), maxOffset));
 }
@@ -150,12 +180,18 @@ export function applyLoopViewerNavigation(
 ): number {
 	const page = Math.max(1, viewportLines);
 	switch (action) {
-		case "up": return clampLoopViewerOffset(offset - 1, totalLines, viewportLines);
-		case "down": return clampLoopViewerOffset(offset + 1, totalLines, viewportLines);
-		case "pageUp": return clampLoopViewerOffset(offset - page, totalLines, viewportLines);
-		case "pageDown": return clampLoopViewerOffset(offset + page, totalLines, viewportLines);
-		case "home": return 0;
-		case "end": return clampLoopViewerOffset(Number.MAX_SAFE_INTEGER, totalLines, viewportLines);
+		case "up":
+			return clampLoopViewerOffset(offset - 1, totalLines, viewportLines);
+		case "down":
+			return clampLoopViewerOffset(offset + 1, totalLines, viewportLines);
+		case "pageUp":
+			return clampLoopViewerOffset(offset - page, totalLines, viewportLines);
+		case "pageDown":
+			return clampLoopViewerOffset(offset + page, totalLines, viewportLines);
+		case "home":
+			return 0;
+		case "end":
+			return clampLoopViewerOffset(Number.MAX_SAFE_INTEGER, totalLines, viewportLines);
 	}
 }
 
@@ -184,13 +220,20 @@ interface TextViewerBlock {
 function safeText(value: unknown): string {
 	if (typeof value === "string") return value;
 	if (value === undefined || value === null) return "";
-	try { return JSON.stringify(value); } catch { return String(value); }
+	try {
+		return JSON.stringify(value);
+	} catch {
+		return String(value);
+	}
 }
 
 function createTextBlock(
 	prefix: string,
 	value: unknown,
-	limits: { maxChars: number; maxLines: number } = { maxChars: MAX_TEXT_CHARS, maxLines: MAX_LINES_PER_TEXT },
+	limits: { maxChars: number; maxLines: number } = {
+		maxChars: MAX_TEXT_CHARS,
+		maxLines: MAX_LINES_PER_TEXT,
+	},
 ): TextViewerBlock | null {
 	const text = safeText(value);
 	if (!text) return null;
@@ -253,7 +296,8 @@ function formatArgs(args: unknown): string {
 	const seen = new Set<object>();
 	const format = (value: unknown, depth: number): string => {
 		if (depth > 3) return "…";
-		if (value === null || typeof value === "number" || typeof value === "boolean") return JSON.stringify(value);
+		if (value === null || typeof value === "number" || typeof value === "boolean")
+			return JSON.stringify(value);
 		if (typeof value === "string") {
 			const bounded = value.length > 160 ? `${value.slice(0, 157)}...` : value;
 			return JSON.stringify(bounded);
@@ -268,7 +312,12 @@ function formatArgs(args: unknown): string {
 				return `[${items.join(", ")}]`;
 			}
 			const keys = Object.keys(value);
-			const items = keys.slice(0, 20).map((key) => `${JSON.stringify(key)}: ${format((value as Record<string, unknown>)[key], depth + 1)}`);
+			const items = keys
+				.slice(0, 20)
+				.map(
+					(key) =>
+						`${JSON.stringify(key)}: ${format((value as Record<string, unknown>)[key], depth + 1)}`,
+				);
 			if (keys.length > 20) items.push("…");
 			return `{${items.join(", ")}}`;
 		} finally {
@@ -321,7 +370,8 @@ export class RalphLoopViewerLineSource {
 		const last = Math.min(this.totalLines, end);
 		if (first >= last) return [];
 		let blockIndex = 0;
-		while (blockIndex + 1 < this.offsets.length && this.offsets[blockIndex + 1] <= first) blockIndex++;
+		while (blockIndex + 1 < this.offsets.length && this.offsets[blockIndex + 1] <= first)
+			blockIndex++;
 		const lines: string[] = [];
 		for (; blockIndex < this.blocks.length && lines.length < last - first; blockIndex++) {
 			const block = this.blocks[blockIndex];
@@ -329,7 +379,8 @@ export class RalphLoopViewerLineSource {
 			const blockEnd = blockStart + this.blockLineCount(block);
 			const from = Math.max(first, blockStart);
 			const to = Math.min(last, blockEnd);
-			for (let line = from; line < to; line++) lines.push(this.lineFromBlock(block, line - blockStart));
+			for (let line = from; line < to; line++)
+				lines.push(this.lineFromBlock(block, line - blockStart));
 		}
 		return lines;
 	}
@@ -349,14 +400,16 @@ export function buildLoopViewerLineSource(
 	addLine(blocks, `Status: ${details?.status || "unknown"}`);
 	addLine(blocks, `Stop: ${details?.stopReason || "(running)"}`);
 	addLine(blocks, `Condition: ${details?.conditionCommand || "(none)"}`);
-	if (details?.conditionTimeoutMs) addLine(blocks, `Condition timeout: ${details.conditionTimeoutMs}ms`);
+	if (details?.conditionTimeoutMs)
+		addLine(blocks, `Condition timeout: ${details.conditionTimeoutMs}ms`);
 	const iterations = Array.isArray(details?.iterations) ? details.iterations : [];
 	addLine(blocks, `Iterations: ${iterations.length}`);
 	const completion = details?.stopOnCompletion
 		? `${details.completionStreak ?? 0}/${details.completionConfirmations ?? 3}`
 		: "disabled";
 	addLine(blocks, `Completion confirmations: ${completion}`);
-	if (details?.handoffMode && details.handoffMode !== "none") addLine(blocks, `Handoff: ${details.handoffMode}`);
+	if (details?.handoffMode && details.handoffMode !== "none")
+		addLine(blocks, `Handoff: ${details.handoffMode}`);
 	if (Array.isArray(details?.artifactPaths)) {
 		for (const artifactPath of details.artifactPaths) addLine(blocks, `Artifact: ${artifactPath}`);
 	}
@@ -367,7 +420,10 @@ export function buildLoopViewerLineSource(
 		const results = Array.isArray(iteration?.details?.results) ? iteration.details.results : [];
 		for (const result of results) {
 			const status = result.exitCode === 0 ? "✓" : "✗";
-			addLine(blocks, `${status} ${result.agent || "(unknown agent)"} (${result.agentSource || "unknown"})`);
+			addLine(
+				blocks,
+				`${status} ${result.agent || "(unknown agent)"} (${result.agentSource || "unknown"})`,
+			);
 			if (result.task) pushText(blocks, "  Task: ", result.task);
 			if (result.errorMessage) pushText(blocks, "  Error: ", result.errorMessage);
 			const messages = Array.isArray(result?.messages) ? result.messages : [];
@@ -385,16 +441,23 @@ export function buildLoopViewerLineSource(
 						} else if (part?.type === "text") {
 							pushText(blocks, "  Assistant: ", part.text);
 						} else if (part?.type === "toolCall") {
-							addLine(blocks, `  Tool call: ${part.name || "(unknown)"} ${formatArgs(part.arguments)}`);
+							addLine(
+								blocks,
+								`  Tool call: ${part.name || "(unknown)"} ${formatArgs(part.arguments)}`,
+							);
 						}
 					}
 					if (thinkingHidden) addLine(blocks, "  Thinking...");
 					continue;
 				}
 				if (message?.role === "toolResult") {
-					addLine(blocks, `  Tool result: ${message.toolName || "(unknown)"}${message.isError ? " [error]" : ""}`);
+					addLine(
+						blocks,
+						`  Tool result: ${message.toolName || "(unknown)"}${message.isError ? " [error]" : ""}`,
+					);
 					if (outputMode !== "simple") {
-						const limits = outputMode === "collapsed" ? { maxChars: 2_000, maxLines: 20 } : undefined;
+						const limits =
+							outputMode === "collapsed" ? { maxChars: 2_000, maxLines: 20 } : undefined;
 						pushContent(blocks, "    ", message.content, showThinking, limits);
 					}
 				}
@@ -403,7 +466,12 @@ export function buildLoopViewerLineSource(
 		}
 	}
 
-	if (details?.steering?.length || details?.followUps?.length || details?.steeringSent?.length || details?.followUpsSent?.length) {
+	if (
+		details?.steering?.length ||
+		details?.followUps?.length ||
+		details?.steeringSent?.length ||
+		details?.followUpsSent?.length
+	) {
 		addLine(blocks, "Queued messages");
 		for (const [label, values] of [
 			["Steering queued", details.steering],
@@ -441,14 +509,22 @@ function color(theme: any, name: string, text: string): string {
 export function getNativeToolDefinition(toolName: string, cwd: string): any | undefined {
 	try {
 		switch (toolName) {
-			case "bash": return createBashToolDefinition(cwd);
-			case "edit": return createEditToolDefinition(cwd);
-			case "find": return createFindToolDefinition(cwd);
-			case "grep": return createGrepToolDefinition(cwd);
-			case "ls": return createLsToolDefinition(cwd);
-			case "read": return createReadToolDefinition(cwd);
-			case "write": return createWriteToolDefinition(cwd);
-			default: return undefined;
+			case "bash":
+				return createBashToolDefinition(cwd);
+			case "edit":
+				return createEditToolDefinition(cwd);
+			case "find":
+				return createFindToolDefinition(cwd);
+			case "grep":
+				return createGrepToolDefinition(cwd);
+			case "ls":
+				return createLsToolDefinition(cwd);
+			case "read":
+				return createReadToolDefinition(cwd);
+			case "write":
+				return createWriteToolDefinition(cwd);
+			default:
+				return undefined;
 		}
 	} catch {
 		return undefined;
@@ -482,7 +558,10 @@ export function buildViewerFooterRows(left: string, right: string, width: number
 
 	const gap = 1;
 	const measuredRight = Math.max(1, visibleWidth(right));
-	const rightWidth = Math.min(measuredRight, Math.max(1, Math.floor((availableWidth - gap) * 0.45)));
+	const rightWidth = Math.min(
+		measuredRight,
+		Math.max(1, Math.floor((availableWidth - gap) * 0.45)),
+	);
 	const leftWidth = Math.max(1, availableWidth - gap - rightWidth);
 	const leftLines = wrapTextWithAnsi(left, leftWidth);
 	const rightLines = wrapTextWithAnsi(right, rightWidth);
@@ -539,11 +618,15 @@ export function renderNativeIteration(
 	const lines: string[] = [];
 	const details = iteration?.details;
 	const results = Array.isArray(details?.results) ? details.results : [];
-	lines.push(color(theme, "accent", `Iteration ${iteration?.index ?? "?"} (${details?.mode || "single"})`));
+	lines.push(
+		color(theme, "accent", `Iteration ${iteration?.index ?? "?"} (${details?.mode || "single"})`),
+	);
 
 	for (const result of results) {
 		const statusIcon = result?.exitCode === 0 ? "✓" : "✗";
-		lines.push(`${statusIcon} ${result?.agent || "(unknown agent)"} (${result?.agentSource || "unknown"})`);
+		lines.push(
+			`${statusIcon} ${result?.agent || "(unknown agent)"} (${result?.agentSource || "unknown"})`,
+		);
 		if (result?.task) lines.push(`Task: ${result.task}`);
 		if (result?.errorMessage) lines.push(`Error: ${result.errorMessage}`);
 
@@ -564,7 +647,8 @@ export function renderNativeIteration(
 				const text = messageText(message);
 				if (text) {
 					try {
-						if (!appendNativeComponent(lines, new UserMessageComponent(text), width)) throw new Error("user renderer unavailable");
+						if (!appendNativeComponent(lines, new UserMessageComponent(text), width))
+							throw new Error("user renderer unavailable");
 					} catch {
 						lines.push(`User: ${text}`);
 					}
@@ -573,15 +657,23 @@ export function renderNativeIteration(
 			}
 			if (message?.role === "assistant") {
 				try {
-					if (!appendNativeComponent(lines, new AssistantMessageComponent(message, !showThinking, getMarkdownTheme()), width)) {
+					if (
+						!appendNativeComponent(
+							lines,
+							new AssistantMessageComponent(message, !showThinking, getMarkdownTheme()),
+							width,
+						)
+					) {
 						throw new Error("assistant renderer unavailable");
 					}
 				} catch {
 					let thinkingHidden = false;
 					for (const part of message.content || []) {
-						if (part?.type === "text" && typeof part.text === "string") lines.push(`Assistant: ${part.text}`);
+						if (part?.type === "text" && typeof part.text === "string")
+							lines.push(`Assistant: ${part.text}`);
 						if (part?.type === "thinking" && !showThinking) thinkingHidden = true;
-						if (part?.type === "thinking" && showThinking && typeof part.thinking === "string") lines.push(`Thinking: ${part.thinking}`);
+						if (part?.type === "thinking" && showThinking && typeof part.thinking === "string")
+							lines.push(`Thinking: ${part.thinking}`);
 					}
 					if (thinkingHidden) lines.push("Thinking...");
 				}
@@ -599,14 +691,16 @@ export function renderNativeIteration(
 							cwd,
 						);
 						if (outputMode === "simple") {
-							if (!appendSimpleNativeComponent(lines, tool, width)) throw new Error("tool renderer unavailable");
+							if (!appendSimpleNativeComponent(lines, tool, width))
+								throw new Error("tool renderer unavailable");
 						} else {
 							tool.updateResult(
 								toolResult ?? { content: [], details: undefined, isError: false },
 								!toolResult || Boolean(toolResult.isPartial),
 							);
 							tool.setExpanded(outputMode === "full");
-							if (!appendNativeComponent(lines, tool, width)) throw new Error("tool renderer unavailable");
+							if (!appendNativeComponent(lines, tool, width))
+								throw new Error("tool renderer unavailable");
 						}
 					} catch {
 						lines.push(`Tool: ${part.name || "(unknown)"} ${formatArgs(part.arguments)}`);
@@ -614,7 +708,10 @@ export function renderNativeIteration(
 				}
 				continue;
 			}
-			if (message?.role === "toolResult" && (!message.toolCallId || !toolCalls.has(message.toolCallId))) {
+			if (
+				message?.role === "toolResult" &&
+				(!message.toolCallId || !toolCalls.has(message.toolCallId))
+			) {
 				try {
 					const tool = new ToolExecutionComponent(
 						message.toolName || "",
@@ -626,18 +723,21 @@ export function renderNativeIteration(
 						cwd,
 					);
 					if (outputMode === "simple") {
-						if (!appendSimpleNativeComponent(lines, tool, width)) throw new Error("tool renderer unavailable");
+						if (!appendSimpleNativeComponent(lines, tool, width))
+							throw new Error("tool renderer unavailable");
 					} else {
 						tool.updateResult(message, Boolean(message.isPartial));
 						tool.setExpanded(outputMode === "full");
-						if (!appendNativeComponent(lines, tool, width)) throw new Error("tool renderer unavailable");
+						if (!appendNativeComponent(lines, tool, width))
+							throw new Error("tool renderer unavailable");
 					}
 				} catch {
 					lines.push(`Tool result: ${message.toolName || "(unknown)"}`);
 				}
 			}
 		}
-		if (Array.isArray(result?.messages) && result.messages.length === 0) lines.push("(no messages)");
+		if (Array.isArray(result?.messages) && result.messages.length === 0)
+			lines.push("(no messages)");
 	}
 	return lines;
 }
@@ -672,13 +772,18 @@ export class RalphLoopViewer implements Component {
 		return Math.max(1, Math.floor((terminalRows * this.heightPercent) / 100));
 	}
 
-	private viewportLines(_width = this.cachedWidth || Number(this.tui?.terminal?.columns) || 80): number {
+	private viewportLines(
+		_width = this.cachedWidth || Number(this.tui?.terminal?.columns) || 80,
+	): number {
 		// The exact footer height is resolved during render because it may wrap.
 		// Reserve a conservative amount here for auto-scroll calculations.
 		return Math.max(1, this.overlayRows() - 6);
 	}
 
-	private maxOffset(totalLines: number, width = this.cachedWidth || Number(this.tui?.terminal?.columns) || 80): number {
+	private maxOffset(
+		totalLines: number,
+		width = this.cachedWidth || Number(this.tui?.terminal?.columns) || 80,
+	): number {
 		return Math.max(0, totalLines - this.viewportLines(width));
 	}
 
@@ -692,7 +797,15 @@ export class RalphLoopViewer implements Component {
 		}
 		const existing = cached.get(key);
 		if (existing) return existing;
-		const lines = renderNativeIteration(iteration, width, this.showThinking, this.outputMode, this.tui, this.cwd, this.theme);
+		const lines = renderNativeIteration(
+			iteration,
+			width,
+			this.showThinking,
+			this.outputMode,
+			this.tui,
+			this.cwd,
+			this.theme,
+		);
 		cached.set(key, lines);
 		return lines;
 	}
@@ -710,11 +823,13 @@ export class RalphLoopViewer implements Component {
 
 		const previousTotal = this.lastTotalLines;
 		const lines: string[] = [];
-		const addMeta = (text: string, colorName = "muted") => lines.push(color(this.theme, colorName, text));
+		const addMeta = (text: string, colorName = "muted") =>
+			lines.push(color(this.theme, colorName, text));
 		addMeta(`Status: ${details?.status || "unknown"}`, "dim");
 		addMeta(`Stop: ${details?.stopReason || "(running)"}`, "dim");
 		addMeta(`Condition: ${details?.conditionCommand || "(none)"}`, "dim");
-		if (details?.conditionTimeoutMs) addMeta(`Condition timeout: ${details.conditionTimeoutMs}ms`, "dim");
+		if (details?.conditionTimeoutMs)
+			addMeta(`Condition timeout: ${details.conditionTimeoutMs}ms`, "dim");
 		const iterations = Array.isArray(details?.iterations) ? details.iterations : [];
 		addMeta(`Iterations: ${iterations.length}`, "dim");
 		if (details?.stopOnCompletion) {
@@ -723,13 +838,19 @@ export class RalphLoopViewer implements Component {
 				"dim",
 			);
 		}
-		if (details?.handoffMode && details.handoffMode !== "none") addMeta(`Handoff: ${details.handoffMode}`, "dim");
+		if (details?.handoffMode && details.handoffMode !== "none")
+			addMeta(`Handoff: ${details.handoffMode}`, "dim");
 		if (Array.isArray(details?.artifactPaths)) {
 			for (const artifactPath of details.artifactPaths) addMeta(`Artifact: ${artifactPath}`, "dim");
 		}
 		if (iterations.length === 0) addMeta("(no iterations yet)");
 		for (const iteration of iterations) lines.push(...this.renderIteration(iteration, width));
-		if (details?.steering?.length || details?.followUps?.length || details?.steeringSent?.length || details?.followUpsSent?.length) {
+		if (
+			details?.steering?.length ||
+			details?.followUps?.length ||
+			details?.steeringSent?.length ||
+			details?.followUpsSent?.length
+		) {
 			addMeta("Queued messages", "accent");
 			for (const [label, values] of [
 				["Steering queued", details.steering],
@@ -781,7 +902,11 @@ export class RalphLoopViewer implements Component {
 		const lines = this.renderedLines(details, width);
 		const innerWidth = Math.max(1, width - 2);
 		const header = truncateToWidth(
-			color(this.theme, "accent", `Ralph Loop ${this.run.runId} · ${details?.status || "unknown"} · ${this.outputMode}`),
+			color(
+				this.theme,
+				"accent",
+				`Ralph Loop ${this.run.runId} · ${details?.status || "unknown"} · ${this.outputMode}`,
+			),
 			innerWidth,
 			"",
 		);
@@ -845,11 +970,12 @@ export class RalphLoopViewer implements Component {
 		else if (matchesKey(data, "home")) action = "home";
 		else if (matchesKey(data, "end")) action = "end";
 		else if (matchesKey(data, "ctrl+o") || data === "\x0f") {
-			this.outputMode = this.outputMode === "collapsed"
-				? "simple"
-				: this.outputMode === "simple"
-					? "full"
-					: "collapsed";
+			this.outputMode =
+				this.outputMode === "collapsed"
+					? "simple"
+					: this.outputMode === "simple"
+						? "full"
+						: "collapsed";
 			this.cachedDetails = undefined;
 			this.cachedNativeLines = undefined;
 			this.tui?.requestRender?.();
@@ -869,7 +995,13 @@ export class RalphLoopViewer implements Component {
 		this.offset = applyLoopViewerNavigation(this.offset, lines.length, viewport, action);
 		const maxOffset = this.maxOffset(lines.length, inputWidth);
 		if (action === "end" || this.offset >= maxOffset) this.followTail = true;
-		else if (this.offset < previousOffset || action === "home" || action === "pageUp" || action === "up") this.followTail = false;
+		else if (
+			this.offset < previousOffset ||
+			action === "home" ||
+			action === "pageUp" ||
+			action === "up"
+		)
+			this.followTail = false;
 		this.tui?.requestRender?.();
 	}
 }

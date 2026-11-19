@@ -64,7 +64,9 @@ for (const name of packages) {
   for (const [dependency, range] of Object.entries(pkg.dependencies ?? {})) {
     const rootRange = rootPkg.dependencies?.[dependency];
     if (!rootRange) {
-      fail(`${name} depends on ${dependency}@${range}, but root package.json does not declare it (git installs would fail)`);
+      fail(
+        `${name} depends on ${dependency}@${range}, but root package.json does not declare it (git installs would fail)`,
+      );
     } else if (rootRange !== range) {
       fail(
         `${dependency} range mismatch: ${name} has ${range}, root has ${rootRange}. ` +
@@ -82,7 +84,10 @@ for (const name of packages) {
   }
 
   // 3b. Root test script must run it.
-  if (testScript && !new RegExp(`-C\\s+${name}\\s+(run\\s+)?test`).test(rootPkg.scripts?.test ?? "")) {
+  if (
+    testScript &&
+    !new RegExp(`-C\\s+${name}\\s+(run\\s+)?test`).test(rootPkg.scripts?.test ?? "")
+  ) {
     fail(`root package.json "test" script does not run ${name}`);
   }
 }
@@ -93,28 +98,25 @@ for (const name of packages) {
 
 // ralph-loop/ui.ts is its own viewer implementation, not the shared helper.
 const SHARED_UI_PACKAGES = ["checkpoint", "lsp", "permission", "repeat"];
-const uiCopies = SHARED_UI_PACKAGES
-  .map((name) => join(root, name, "ui.ts"))
-  .filter((path) => existsSync(path));
+const sharedUi = join(root, "shared", "ui.ts");
 
-if (uiCopies.length !== SHARED_UI_PACKAGES.length) {
-  fail(`expected ${SHARED_UI_PACKAGES.length} shared ui.ts copies, found ${uiCopies.length}`);
-}
-
-if (uiCopies.length > 1) {
-  const hashes = new Map<string, string[]>();
-  for (const path of uiCopies) {
-    const hash = createHash("sha256").update(readFileSync(path)).digest("hex");
-    const list = hashes.get(hash) ?? [];
-    list.push(path.slice(root.length + 1));
-    hashes.set(hash, list);
+if (!existsSync(sharedUi)) {
+  fail("missing canonical shared/ui.ts");
+} else {
+  const expected = createHash("sha256").update(readFileSync(sharedUi)).digest("hex");
+  for (const name of SHARED_UI_PACKAGES) {
+    const copy = join(root, name, "ui.ts");
+    if (!existsSync(copy)) {
+      fail(`${name}/ui.ts is missing; run pnpm sync:ui`);
+      continue;
+    }
+    const actual = createHash("sha256").update(readFileSync(copy)).digest("hex");
+    if (actual !== expected) {
+      fail(`${name}/ui.ts has drifted from shared/ui.ts; run pnpm sync:ui`);
+    }
   }
-  if (hashes.size > 1) {
-    const summary = [...hashes.values()].map((files) => files.join(", ")).join(" | ");
-    fail(`shared ui.ts copies have drifted apart: ${summary}`);
-  } else {
-    notes.push(`${uiCopies.length} ui.ts copies are identical`);
-  }
+  if (failures.length === 0)
+    notes.push(`${SHARED_UI_PACKAGES.length} ui.ts copies match shared/ui.ts`);
 }
 
 // ---------------------------------------------------------------------------

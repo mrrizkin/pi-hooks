@@ -123,7 +123,7 @@ export function invalidateConfigCache(): void {
  * Returns a safe config object with invalid entries removed
  */
 function validateConfig(config: unknown): PermissionConfig {
-  if (!config || typeof config !== 'object') {
+  if (!config || typeof config !== "object") {
     return {};
   }
 
@@ -131,17 +131,17 @@ function validateConfig(config: unknown): PermissionConfig {
   const raw = config as Record<string, unknown>;
 
   // Validate overrides
-  if (raw.overrides && typeof raw.overrides === 'object') {
+  if (raw.overrides && typeof raw.overrides === "object") {
     const overrides = raw.overrides as Record<string, unknown>;
     result.overrides = {};
-    
-    const levels = ['minimal', 'low', 'medium', 'high', 'dangerous'] as const;
+
+    const levels = ["minimal", "low", "medium", "high", "dangerous"] as const;
     for (const level of levels) {
       const patterns = overrides[level];
       if (Array.isArray(patterns)) {
         // Filter to only valid string patterns, limit count
         const validPatterns = patterns
-          .filter((p): p is string => typeof p === 'string' && p.length > 0)
+          .filter((p): p is string => typeof p === "string" && p.length > 0)
           .slice(0, 100); // Max 100 patterns per level
         if (validPatterns.length > 0) {
           result.overrides[level] = validPatterns;
@@ -153,10 +153,13 @@ function validateConfig(config: unknown): PermissionConfig {
   // Validate prefix mappings
   if (Array.isArray(raw.prefixMappings)) {
     const validMappings = raw.prefixMappings
-      .filter((m): m is { from: string; to: string } => 
-        m && typeof m === 'object' &&
-        typeof (m as any).from === 'string' && (m as any).from.length > 0 &&
-        typeof (m as any).to === 'string'
+      .filter(
+        (m): m is { from: string; to: string } =>
+          m &&
+          typeof m === "object" &&
+          typeof (m as any).from === "string" &&
+          (m as any).from.length > 0 &&
+          typeof (m as any).to === "string",
       )
       .slice(0, 50); // Max 50 prefix mappings
     if (validMappings.length > 0) {
@@ -188,11 +191,11 @@ function globToRegex(pattern: string): RegExp {
     // Escape regex special chars first (except * and ? which we handle specially)
     // Note: - is not special outside character classes, so we don't need to escape it
     const regex = pattern
-      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-      .replace(/\*/g, '.*') // * -> match any characters
-      .replace(/\?/g, '.'); // ? -> match single character
+      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+      .replace(/\*/g, ".*") // * -> match any characters
+      .replace(/\?/g, "."); // ? -> match single character
 
-    return new RegExp(`^${regex}$`, 'i');
+    return new RegExp(`^${regex}$`, "i");
   } catch {
     // Return a pattern that never matches on invalid input
     return /(?!)/;
@@ -206,8 +209,8 @@ function matchesAnyPattern(command: string, patterns: string[] | undefined | nul
   if (!patterns || !Array.isArray(patterns) || patterns.length === 0) {
     return false;
   }
-  return patterns.some(pattern => 
-    typeof pattern === 'string' && getCachedRegex(pattern).test(command)
+  return patterns.some(
+    (pattern) => typeof pattern === "string" && getCachedRegex(pattern).test(command),
   );
 }
 
@@ -217,7 +220,7 @@ function matchesAnyPattern(command: string, patterns: string[] | undefined | nul
  */
 function applyPrefixMappings(
   command: string,
-  mappings: PermissionConfig['prefixMappings']
+  mappings: PermissionConfig["prefixMappings"],
 ): string {
   if (!mappings || !Array.isArray(mappings) || mappings.length === 0) return command;
 
@@ -226,10 +229,10 @@ function applyPrefixMappings(
 
   for (const mapping of mappings) {
     // Validate mapping structure
-    if (!mapping || typeof mapping.from !== 'string' || typeof mapping.to !== 'string') {
+    if (!mapping || typeof mapping.from !== "string" || typeof mapping.to !== "string") {
       continue;
     }
-    
+
     const { from, to } = mapping;
     const fromLower = from.toLowerCase();
 
@@ -237,10 +240,10 @@ function applyPrefixMappings(
       // Check for word boundary (whitespace or end of string after prefix)
       const afterPrefix = trimmed.substring(fromLower.length);
       // Use regex to check for whitespace boundary (handles tabs, multiple spaces)
-      if (afterPrefix === '' || /^\s/.test(afterPrefix)) {
+      if (afterPrefix === "" || /^\s/.test(afterPrefix)) {
         // Replace prefix with mapped value, preserve rest with trimmed leading space
-        const remainder = afterPrefix.replace(/^\s+/, '');
-        if (to === '') {
+        const remainder = afterPrefix.replace(/^\s+/, "");
+        if (to === "") {
           return remainder;
         }
         return remainder ? `${to} ${remainder}` : to;
@@ -257,7 +260,7 @@ function applyPrefixMappings(
  */
 function checkOverrides(
   command: string,
-  overrides: PermissionConfig['overrides']
+  overrides: PermissionConfig["overrides"],
 ): Classification | null {
   if (!overrides) return null;
 
@@ -265,24 +268,24 @@ function checkOverrides(
 
   // Check dangerous first (highest priority)
   if (overrides.dangerous && matchesAnyPattern(trimmed, overrides.dangerous)) {
-    return { level: 'high', dangerous: true };
+    return { level: "high", dangerous: true };
   }
 
   // Check levels in order of specificity (high to low)
   if (overrides.high && matchesAnyPattern(trimmed, overrides.high)) {
-    return { level: 'high', dangerous: false };
+    return { level: "high", dangerous: false };
   }
 
   if (overrides.medium && matchesAnyPattern(trimmed, overrides.medium)) {
-    return { level: 'medium', dangerous: false };
+    return { level: "medium", dangerous: false };
   }
 
   if (overrides.low && matchesAnyPattern(trimmed, overrides.low)) {
-    return { level: 'low', dangerous: false };
+    return { level: "low", dangerous: false };
   }
 
   if (overrides.minimal && matchesAnyPattern(trimmed, overrides.minimal)) {
-    return { level: 'minimal', dangerous: false };
+    return { level: "minimal", dangerous: false };
   }
 
   return null; // No override matched
@@ -308,7 +311,7 @@ function saveSettings(settings: Record<string, unknown>): void {
   const settingsPath = getSettingsPath();
   const dir = path.dirname(settingsPath);
   const tempPath = `${settingsPath}.tmp`;
-  
+
   try {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -383,12 +386,20 @@ interface ParsedCommand {
 
 // Shell execution commands that can run arbitrary code
 const SHELL_EXECUTION_COMMANDS = new Set([
-  "eval", "exec", "source", ".", // shell builtins
+  "eval",
+  "exec",
+  "source",
+  ".", // shell builtins
   "env", // can execute commands: env rm -rf /
   "command", // bypasses aliases, can execute arbitrary commands
   "builtin", // uses shell builtins directly
   // Wrapper commands that can execute arbitrary commands
-  "time", "nice", "nohup", "timeout", "watch", "strace",
+  "time",
+  "nice",
+  "nohup",
+  "timeout",
+  "watch",
+  "strace",
   // Note: xargs is handled in CONDITIONAL_WRITE_COMMANDS with smart logic
 ]);
 
@@ -416,7 +427,7 @@ function hasDangerousExpansion(command: string): boolean {
 
 function detectShellTricks(command: string): boolean {
   // Check basic patterns first
-  if (SHELL_TRICK_PATTERNS.some(pattern => pattern.test(command))) {
+  if (SHELL_TRICK_PATTERNS.some((pattern) => pattern.test(command))) {
     return true;
   }
   // Check for dangerous ${...} expansions with nested command substitution
@@ -431,13 +442,16 @@ const OUTPUT_REDIRECTION_OPS = new Set([">", ">>", ">|", "&>", "&>>"]);
 
 // Safe redirection targets (not actual file writes)
 const SAFE_REDIRECTION_TARGETS = new Set([
-  "/dev/null", "/dev/stdout", "/dev/stderr",
-  "/dev/fd/1", "/dev/fd/2",
+  "/dev/null",
+  "/dev/stdout",
+  "/dev/stderr",
+  "/dev/fd/1",
+  "/dev/fd/2",
 ]);
 
 function parseCommand(command: string): ParsedCommand {
   const hasShellTricks = detectShellTricks(command);
-  
+
   // shell-quote can throw on complex patterns it doesn't understand
   // In that case, treat the command as having shell tricks (require high permission)
   let tokens: ReturnType<typeof parse>;
@@ -449,7 +463,7 @@ function parseCommand(command: string): ParsedCommand {
       segments: [],
       operators: [],
       raw: command,
-      hasShellTricks: true
+      hasShellTricks: true,
     };
   }
 
@@ -465,7 +479,7 @@ function parseCommand(command: string): ParsedCommand {
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
-    
+
     if (pendingOutputRedirect) {
       // This token is a redirection target
       pendingOutputRedirect = false;
@@ -477,7 +491,7 @@ function parseCommand(command: string): ParsedCommand {
       }
       continue;
     }
-    
+
     if (typeof token === "string") {
       currentSegment.push(token);
     } else if (token && typeof token === "object") {
@@ -536,7 +550,7 @@ function parseCommand(command: string): ParsedCommand {
     operators,
     raw: command,
     hasShellTricks: hasShellTricks || foundCommandSubstitution,
-    writesFiles
+    writesFiles,
   };
 }
 
@@ -618,9 +632,17 @@ function isDangerousCommand(tokens: string[]): boolean {
 
 // Common redirection targets (treated as read-only)
 const REDIRECTION_TARGETS = new Set([
-  "/dev/null", "/dev/stdin", "/dev/stdout", "/dev/stderr",
-  "/dev/zero", "/dev/full", "/dev/random", "/dev/urandom",
-  "/dev/fd", "/dev/tty", "/dev/ptmx",
+  "/dev/null",
+  "/dev/stdin",
+  "/dev/stdout",
+  "/dev/stderr",
+  "/dev/zero",
+  "/dev/full",
+  "/dev/random",
+  "/dev/urandom",
+  "/dev/fd",
+  "/dev/tty",
+  "/dev/ptmx",
 ]);
 
 // File descriptor numbers used in redirections (e.g., 2>&1)
@@ -629,22 +651,80 @@ const FD_NUMBERS = new Set(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
 // MINIMAL level - read-only commands
 const MINIMAL_COMMANDS = new Set([
   // File reading
-  "cat", "less", "more", "head", "tail", "bat", "tac",
+  "cat",
+  "less",
+  "more",
+  "head",
+  "tail",
+  "bat",
+  "tac",
   // Directory listing/navigation
-  "ls", "tree", "pwd", "dir", "vdir", "cd", "pushd", "popd", "dirs",
+  "ls",
+  "tree",
+  "pwd",
+  "dir",
+  "vdir",
+  "cd",
+  "pushd",
+  "popd",
+  "dirs",
   // Search (note: find handled specially due to -exec/-delete)
-  "grep", "egrep", "fgrep", "rg", "ag", "ack", "fd", "locate", "which", "whereis",
+  "grep",
+  "egrep",
+  "fgrep",
+  "rg",
+  "ag",
+  "ack",
+  "fd",
+  "locate",
+  "which",
+  "whereis",
   // Info
-  "echo", "printf", "whoami", "id", "date", "cal", "uname", "hostname", "uptime",
-  "type", "file", "stat", "wc", "du", "df", "free",
-  "ps", "top", "htop", "pgrep", "sleep",
+  "echo",
+  "printf",
+  "whoami",
+  "id",
+  "date",
+  "cal",
+  "uname",
+  "hostname",
+  "uptime",
+  "type",
+  "file",
+  "stat",
+  "wc",
+  "du",
+  "df",
+  "free",
+  "ps",
+  "top",
+  "htop",
+  "pgrep",
+  "sleep",
   // Man/help
-  "man", "help", "info",
+  "man",
+  "help",
+  "info",
   // Pipeline utilities (note: xargs, tee handled specially - they can write/execute)
-  "sort", "uniq", "cut", "awk", "sed", "tr", "column", "paste", "join",
-  "comm", "diff", "cmp", "patch",
+  "sort",
+  "uniq",
+  "cut",
+  "awk",
+  "sed",
+  "tr",
+  "column",
+  "paste",
+  "join",
+  "comm",
+  "diff",
+  "cmp",
+  "patch",
   // Shell test commands (read-only conditionals)
-  "test", "[", "[[", "true", "false",
+  "test",
+  "[",
+  "[[",
+  "true",
+  "false",
 ]);
 
 // Commands that can write files based on arguments
@@ -728,7 +808,7 @@ function extractXargsCommand(tokens: string[]): string | null {
 const CONDITIONAL_WRITE_COMMANDS: Record<string, (tokens: string[]) => boolean> = {
   find: (tokens) => {
     const dangerousFlags = ["-exec", "-execdir", "-ok", "-okdir", "-delete"];
-    return tokens.some(t => dangerousFlags.includes(t.toLowerCase()));
+    return tokens.some((t) => dangerousFlags.includes(t.toLowerCase()));
   },
   xargs: (tokens) => {
     // xargs executes commands with input as arguments
@@ -746,17 +826,31 @@ const CONDITIONAL_WRITE_COMMANDS: Record<string, (tokens: string[]) => boolean> 
   },
   tee: (tokens) => {
     // tee writes to files unless only used with /dev/null or --
-    const args = tokens.slice(1).filter(t => !t.startsWith("-"));
+    const args = tokens.slice(1).filter((t) => !t.startsWith("-"));
     if (args.length === 0) return false; // tee with no file args writes to stdout only
     // Check if all file args are /dev/null
-    return !args.every(a => a === "/dev/null");
+    return !args.every((a) => a === "/dev/null");
   },
 };
 
 const MINIMAL_GIT_SUBCOMMANDS = new Set([
-  "status", "log", "diff", "show", "branch", "remote", "tag",
-  "ls-files", "ls-tree", "cat-file", "rev-parse", "describe",
-  "shortlog", "blame", "annotate", "whatchanged", "reflog",
+  "status",
+  "log",
+  "diff",
+  "show",
+  "branch",
+  "remote",
+  "tag",
+  "ls-files",
+  "ls-tree",
+  "cat-file",
+  "rev-parse",
+  "describe",
+  "shortlog",
+  "blame",
+  "annotate",
+  "whatchanged",
+  "reflog",
   "fetch", // read-only: just downloads refs, doesn't change working tree
 ]);
 
@@ -816,7 +910,7 @@ function isMinimalLevel(tokens: string[]): boolean {
     const READ_ONLY_WITHOUT_ARGS = new Set(["branch", "tag", "remote"]);
     if (READ_ONLY_WITHOUT_ARGS.has(subCmd)) {
       // Check if there are args beyond flags (starting with -)
-      const nonFlagArgs = tokens.slice(2).filter(t => !t.startsWith("-"));
+      const nonFlagArgs = tokens.slice(2).filter((t) => !t.startsWith("-"));
       if (nonFlagArgs.length > 0) {
         return false; // Has args, not read-only
       }
@@ -985,9 +1079,22 @@ const MEDIUM_PACKAGE_PATTERNS: Array<[string, RegExp]> = [
 ];
 
 const MEDIUM_GIT_SUBCOMMANDS = new Set([
-  "add", "commit", "pull", "checkout", "switch", "branch",
-  "merge", "rebase", "cherry-pick", "stash", "revert", "tag",
-  "rm", "mv", "reset", "clone", // reset without --hard, clone is reversible
+  "add",
+  "commit",
+  "pull",
+  "checkout",
+  "switch",
+  "branch",
+  "merge",
+  "rebase",
+  "cherry-pick",
+  "stash",
+  "revert",
+  "tag",
+  "rm",
+  "mv",
+  "reset",
+  "clone", // reset without --hard, clone is reversible
   // NOT included (irreversible):
   // - clean: permanently deletes untracked files
   // - restore: can discard uncommitted changes permanently
@@ -995,17 +1102,48 @@ const MEDIUM_GIT_SUBCOMMANDS = new Set([
 
 // Safe npm/yarn/pnpm/bun run scripts (build, test, lint - not dev, start, serve)
 const SAFE_RUN_SCRIPTS = new Set([
-  "build", "compile", "test", "lint", "format", "fmt", "check", "typecheck",
-  "type-check", "types", "validate", "verify", "prepare", "prepublish",
-  "prepublishOnly", "prepack", "postpack", "clean", "lint:fix", "format:check",
-  "build:prod", "build:dev", "build:production", "build:development",
-  "test:unit", "test:integration", "test:e2e", "test:coverage",
+  "build",
+  "compile",
+  "test",
+  "lint",
+  "format",
+  "fmt",
+  "check",
+  "typecheck",
+  "type-check",
+  "types",
+  "validate",
+  "verify",
+  "prepare",
+  "prepublish",
+  "prepublishOnly",
+  "prepack",
+  "postpack",
+  "clean",
+  "lint:fix",
+  "format:check",
+  "build:prod",
+  "build:dev",
+  "build:production",
+  "build:development",
+  "test:unit",
+  "test:integration",
+  "test:e2e",
+  "test:coverage",
 ]);
 
 // Scripts that run servers or arbitrary code
 const UNSAFE_RUN_SCRIPTS = new Set([
-  "start", "dev", "develop", "serve", "server", "watch", "preview",
-  "start:dev", "start:prod", "dev:server",
+  "start",
+  "dev",
+  "develop",
+  "serve",
+  "server",
+  "watch",
+  "preview",
+  "start:dev",
+  "start:prod",
+  "dev:server",
 ]);
 
 function isSafeRunScript(script: string): boolean {
@@ -1013,15 +1151,25 @@ function isSafeRunScript(script: string): boolean {
   // Check explicit safe list
   if (SAFE_RUN_SCRIPTS.has(s)) return true;
   // Check if starts with safe prefix
-  if (s.startsWith("build") || s.startsWith("test") || s.startsWith("lint") || 
-      s.startsWith("format") || s.startsWith("check") || s.startsWith("type")) {
+  if (
+    s.startsWith("build") ||
+    s.startsWith("test") ||
+    s.startsWith("lint") ||
+    s.startsWith("format") ||
+    s.startsWith("check") ||
+    s.startsWith("type")
+  ) {
     return true;
   }
   // Check explicit unsafe list
   if (UNSAFE_RUN_SCRIPTS.has(s)) return false;
   // Check unsafe prefixes
-  if (s.startsWith("start") || s.startsWith("dev") || s.startsWith("serve") || 
-      s.startsWith("watch")) {
+  if (
+    s.startsWith("start") ||
+    s.startsWith("dev") ||
+    s.startsWith("serve") ||
+    s.startsWith("watch")
+  ) {
     return false;
   }
   // Default: unknown scripts are unsafe

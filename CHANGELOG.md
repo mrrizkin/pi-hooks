@@ -15,4 +15,6 @@
 - Typecheck now covers test files in every package.
 - Extracted pure helpers into `repeat/repeat-core.ts` and `token-rate/token-rate-core.ts` and added unit tests (15 and 12 cases); the root `test` script now runs them.
 - Split ralph-loop's pure completion/handoff, RPC, and limit definitions into `completion.ts`, `rpc.ts`, and `loop-constants.ts` (re-exported from `ralph-loop.ts` for compatibility).
+- Added Biome formatting (`pnpm format`, `pnpm format:check`) with 2-space indentation (tabs for `repeat/` and `ralph-loop/`), and added a format check to CI.
+- Made `shared/ui.ts` the canonical source for the interactive UI helper; `pnpm sync:ui` regenerates the four per-package copies and `check:sync` verifies them.
 - Documented the security model: `permission` is not a sandbox, and `checkpoint` can capture un-ignored secrets into `refs/pi-checkpoints/`.

@@ -1,10 +1,13 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
   "files": {
-    "includes": ["**/*.ts", "!**/node_modules", "!**/dist"]
+    "includes": ["**/*.ts", "**/*.json", "!**/node_modules", "!**/dist"]
   },
   "formatter": {
-    "enabled": false
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
   },
   "assist": {
     "enabled": false
@@ -26,5 +29,19 @@
         "useOptionalChain": "off"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["repeat/**", "ralph-loop/**"],
+      "formatter": {
+        "indentStyle": "tab"
+      }
+    },
+    {
+      "includes": ["checkpoint/ui.ts", "lsp/ui.ts", "permission/ui.ts", "repeat/ui.ts"],
+      "formatter": {
+        "enabled": false
+      }
+    }
+  ]
 }

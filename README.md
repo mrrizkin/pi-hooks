@@ -154,12 +154,13 @@ From the repository root:
 
 ```bash
 pnpm install
-pnpm typecheck   # includes tests
+pnpm typecheck     # includes tests
 pnpm lint
+pnpm format:check  # biome format
 pnpm check:sync
 pnpm test
 pnpm smoke-import
-pnpm validate    # all of the above
+pnpm validate      # all of the above
 ```
 
 The repo is a pnpm workspace: one lockfile and one shared `node_modules` (deps are hard-linked from pnpm's global store, so the 6 sub-packages no longer each download their own copy of `typescript`, `esbuild`, `@earendil-works/*`, etc.). CI installs with `pnpm install --frozen-lockfile`.
@@ -168,9 +169,21 @@ The repo is a pnpm workspace: one lockfile and one shared `node_modules` (deps a
 
 `pnpm check:sync` guards invariants that are easy to break in this two-target
 repo (git install + standalone npm packages): root runtime dependencies must
-match each package's dependencies, the shared `ui.ts` copies must stay
-byte-identical, and every package must have a real test script wired into the
-root `test` script.
+match each package's dependencies, the generated `ui.ts` copies must stay
+byte-identical to `shared/ui.ts`, and every package must have a real test
+script wired into the root `test` script.
+
+The interactive UI helper lives in `shared/ui.ts`. It is copied into
+`checkpoint/`, `lsp/`, `permission/`, and `repeat/` so each npm package stays
+self-contained. After editing it, run:
+
+```bash
+pnpm sync:ui
+```
+
+Formatting rules live in `biome.json` (2 spaces, tabs for `repeat/` and
+`ralph-loop/`, 100 columns). Generated `ui.ts` copies are excluded from the
+formatter and validated by `pnpm check:sync` instead.
 
 ## License
 

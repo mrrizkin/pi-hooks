@@ -17,13 +17,17 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder, createEditTool, createWriteTool } from "@earendil-works/pi-coding-agent";
-import { Container, SelectList, Spacer, Text, getKeybindings, truncateToWidth, type SelectItem } from "@earendil-works/pi-tui";
+import {
+	Container,
+	SelectList,
+	Spacer,
+	Text,
+	getKeybindings,
+	truncateToWidth,
+	type SelectItem,
+} from "@earendil-works/pi-tui";
 
-async function openExternalEditor(
-	ctx: any,
-	filePath: string,
-	line?: number,
-): Promise<boolean> {
+async function openExternalEditor(ctx: any, filePath: string, line?: number): Promise<boolean> {
 	const editorCommand = getExternalEditor();
 	if (!editorCommand) return false;
 
@@ -50,16 +54,17 @@ async function openExternalEditor(
 	}
 
 	return new Promise<boolean>((resolve) => {
-		void ctx.ui.custom((tui, theme, _kb, done) => {
-			const text = new Text(theme.fg("accent", "Opening external editor..."), 1, 1);
-			setTimeout(() => {
-				const ok = runEditor(tui);
-				done(ok);
-			}, 0);
-			return text;
-		}).then((result: boolean) => resolve(result));
+		void ctx.ui
+			.custom((tui, theme, _kb, done) => {
+				const text = new Text(theme.fg("accent", "Opening external editor..."), 1, 1);
+				setTimeout(() => {
+					const ok = runEditor(tui);
+					done(ok);
+				}, 0);
+				return text;
+			})
+			.then((result: boolean) => resolve(result));
 	});
-
 }
 
 async function editContentInExternalEditor(
@@ -119,12 +124,13 @@ async function showRepeatPicker(ctx: any, items: SelectItem[]): Promise<string |
 
 		const applyFilter = () => {
 			const tokens = searchQuery.toLowerCase().split(/\s+/).filter(Boolean);
-			const filtered = tokens.length === 0
-				? items
-				: items.filter((item) => {
-					const haystack = `${item.label ?? ""} ${item.description ?? ""}`.toLowerCase();
-					return tokens.every((token) => haystack.includes(token));
-				});
+			const filtered =
+				tokens.length === 0
+					? items
+					: items.filter((item) => {
+							const haystack = `${item.label ?? ""} ${item.description ?? ""}`.toLowerCase();
+							return tokens.every((token) => haystack.includes(token));
+						});
 			filteredItems = filtered;
 			selectList = buildSelectList(filteredItems);
 		};
@@ -153,7 +159,9 @@ async function showRepeatPicker(ctx: any, items: SelectItem[]): Promise<string |
 		container.addChild(selectListWrapper);
 
 		container.addChild(new Spacer(1));
-		container.addChild(new Text(theme.fg("dim", "1-9 select • ↑↓ navigate • enter select • esc cancel"), 1, 0));
+		container.addChild(
+			new Text(theme.fg("dim", "1-9 select • ↑↓ navigate • enter select • esc cancel"), 1, 0),
+		);
 		container.addChild(new Spacer(1));
 		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
 
@@ -269,18 +277,19 @@ export default function (pi: ExtensionAPI) {
 				const absolutePath = resolvePath(ctx.cwd, targetPath);
 
 				if (externalEditor) {
-					const baseContent = mode === "edit"
-						? (() => {
-							if (fs.existsSync(absolutePath)) {
-								try {
-									return fs.readFileSync(absolutePath, "utf-8");
-								} catch {
+					const baseContent =
+						mode === "edit"
+							? (() => {
+									if (fs.existsSync(absolutePath)) {
+										try {
+											return fs.readFileSync(absolutePath, "utf-8");
+										} catch {
+											return content;
+										}
+									}
 									return content;
-								}
-							}
-							return content;
-						})()
-						: content;
+								})()
+							: content;
 
 					const edited = await editContentInExternalEditor(ctx, baseContent);
 					if (edited === null) return;
@@ -291,7 +300,11 @@ export default function (pi: ExtensionAPI) {
 
 					const writeTool = createWriteTool(ctx.cwd);
 					try {
-						const result = await writeTool.execute("repeat-write", { path: targetPath, content: edited.content }, undefined);
+						const result = await writeTool.execute(
+							"repeat-write",
+							{ path: targetPath, content: edited.content },
+							undefined,
+						);
 						ctx.ui.notify(extractText(result.content) || "Write completed.", "info");
 					} catch (error: any) {
 						ctx.ui.notify(`Write failed: ${error?.message || String(error)}`, "error");
@@ -306,7 +319,11 @@ export default function (pi: ExtensionAPI) {
 
 				const writeTool = createWriteTool(ctx.cwd);
 				try {
-					const result = await writeTool.execute("repeat-write", { path: targetPath, content }, undefined);
+					const result = await writeTool.execute(
+						"repeat-write",
+						{ path: targetPath, content },
+						undefined,
+					);
 					ctx.ui.notify(extractText(result.content) || "Write completed.", "info");
 				} catch (error: any) {
 					ctx.ui.notify(`Write failed: ${error?.message || String(error)}`, "error");
@@ -345,7 +362,10 @@ export default function (pi: ExtensionAPI) {
 						try {
 							originalContent = fs.readFileSync(absolutePath, "utf-8");
 						} catch (error: any) {
-							ctx.ui.notify(`Failed to read ${targetPath}: ${error?.message || String(error)}`, "error");
+							ctx.ui.notify(
+								`Failed to read ${targetPath}: ${error?.message || String(error)}`,
+								"error",
+							);
 							return;
 						}
 
@@ -378,7 +398,11 @@ export default function (pi: ExtensionAPI) {
 
 					const editTool = createEditTool(ctx.cwd);
 					try {
-						const result = await editTool.execute("repeat-edit", { path: targetPath, oldText, newText }, undefined);
+						const result = await editTool.execute(
+							"repeat-edit",
+							{ path: targetPath, oldText, newText },
+							undefined,
+						);
 						ctx.ui.notify(extractText(result.content) || "Edit completed.", "info");
 					} catch (error: any) {
 						ctx.ui.notify(`Edit failed: ${error?.message || String(error)}`, "error");

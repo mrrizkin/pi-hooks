@@ -6,7 +6,11 @@ export function isProcessActive(proc: any): boolean {
 	return Boolean(proc && proc.exitCode === null);
 }
 
-export function resolveRpcExitCode(code: number | null, sawAgentEnd: boolean, aborted: boolean): number {
+export function resolveRpcExitCode(
+	code: number | null,
+	sawAgentEnd: boolean,
+	aborted: boolean,
+): number {
 	const normalized = code ?? 1;
 	return !sawAgentEnd && !aborted && normalized === 0 ? 1 : normalized;
 }
@@ -29,6 +33,10 @@ export function terminateSubagent(proc: any, signal: "SIGTERM" | "SIGKILL" = "SI
 		if (process.platform !== "win32" && proc.pid) process.kill(-proc.pid, signal);
 		else proc.kill(signal);
 	} catch {
-		try { proc.kill(signal); } catch { /* already exited */ }
+		try {
+			proc.kill(signal);
+		} catch {
+			/* already exited */
+		}
 	}
 }
