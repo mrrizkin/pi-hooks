@@ -58,7 +58,7 @@ export function splitCommand(command: string): string[] {
 	if (!trimmed) return [];
 	const parts: string[] = [];
 	let current = "";
-	let quote: "\"" | "'" | null = null;
+	let quote: '"' | "'" | null = null;
 
 	for (let i = 0; i < trimmed.length; i++) {
 		const char = trimmed[i];
@@ -70,7 +70,7 @@ export function splitCommand(command: string): string[] {
 			}
 			continue;
 		}
-		if (char === "\"" || char === "'") {
+		if (char === '"' || char === "'") {
 			quote = char;
 			continue;
 		}

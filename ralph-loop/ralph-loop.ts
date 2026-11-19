@@ -15,11 +15,7 @@ import * as path from "node:path";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
 import { StringEnum, Type } from "@earendil-works/pi-ai";
-import {
-	type ExtensionAPI,
-	formatSize,
-	truncateTail,
-} from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, formatSize, truncateTail } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import {
 	discoverRalphLoopRuns,
@@ -76,15 +72,15 @@ function lookupProviderForModel(modelName: string): string | null {
 			timeout: 5000,
 			stdio: ["ignore", "pipe", "pipe"],
 		});
-		
+
 		if (result.status !== 0 || !result.stdout) return null;
-		
+
 		const lines = result.stdout.split("\n");
 		// Skip header line, find exact match for model
 		for (let i = 1; i < lines.length; i++) {
 			const line = lines[i].trim();
 			if (!line) continue;
-			
+
 			// Parse columns: provider, model, context, max-out, thinking, images
 			const parts = line.split(/\s+/);
 			if (parts.length >= 2) {
@@ -96,7 +92,7 @@ function lookupProviderForModel(modelName: string): string | null {
 				}
 			}
 		}
-		
+
 		// If no exact match, return first result's provider (fuzzy match)
 		if (lines.length > 1) {
 			const firstResult = lines[1].trim().split(/\s+/);
@@ -104,7 +100,7 @@ function lookupProviderForModel(modelName: string): string | null {
 				return firstResult[0];
 			}
 		}
-		
+
 		return null;
 	} catch {
 		return null;
@@ -173,7 +169,13 @@ export interface RalphLoopDetails {
 	maxIterations: number | null;
 	sleepMs: number;
 	conditionTimeoutMs: number;
-	lastCondition: { stdout: string; stderr: string; exitCode: number; killed?: boolean; timedOut?: boolean };
+	lastCondition: {
+		stdout: string;
+		stderr: string;
+		exitCode: number;
+		killed?: boolean;
+		timedOut?: boolean;
+	};
 	prompt: LoopPromptInfo;
 	steering: string[];
 	followUps: string[];
@@ -234,8 +236,6 @@ function getFinalAssistantText(messages: Message[]): string {
 	return "";
 }
 
-
-
 function applyIterationContextToParams(params: any, options: IterationTaskOptions): any {
 	const next = cloneLoopParams(params);
 	if (typeof next.task === "string") {
@@ -292,7 +292,10 @@ function applySteeringToParams(params: any, steering: string | null): any {
 	return nextParams;
 }
 
-function mergeAbortSignals(primary?: AbortSignal, secondary?: AbortSignal): AbortSignal | undefined {
+function mergeAbortSignals(
+	primary?: AbortSignal,
+	secondary?: AbortSignal,
+): AbortSignal | undefined {
 	if (!primary) return secondary;
 	if (!secondary) return primary;
 	const controller = new AbortController();
@@ -305,10 +308,6 @@ function mergeAbortSignals(primary?: AbortSignal, secondary?: AbortSignal): Abor
 	}
 	return controller.signal;
 }
-
-
-
-
 
 function pauseActiveRuns(control: LoopControlState, runs: Set<ActiveRun>): boolean {
 	if (control.paused) return runs.size > 0;
@@ -363,7 +362,10 @@ function resumeActiveRuns(control: LoopControlState, runs: Set<ActiveRun>): bool
 	return resumed;
 }
 
-function writePromptToTempFile(agentName: string, prompt: string): { dir: string; filePath: string } {
+function writePromptToTempFile(
+	agentName: string,
+	prompt: string,
+): { dir: string; filePath: string } {
 	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagent-"));
 	const safeName = agentName.replace(/[^\w.-]+/g, "_");
 	const filePath = path.join(tmpDir, `prompt-${safeName}.md`);
@@ -399,7 +401,15 @@ async function runSingleAgent(
 			exitCode: 1,
 			messages: [],
 			stderr: `Unknown agent: ${agentName}`,
-			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+			usage: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				cost: 0,
+				contextTokens: 0,
+				turns: 0,
+			},
 			step,
 		};
 	}
@@ -418,7 +428,10 @@ async function runSingleAgent(
 	const uuid = crypto.randomUUID().substring(0, 8);
 	const indexSuffix = taskIndex !== undefined ? `_idx${taskIndex}` : "";
 	const stepSuffix = step !== undefined ? `_step${step}` : "";
-	const sessionFile = path.join(subagentSessionDir, `${timestamp}_${safeName}${stepSuffix}${indexSuffix}_${uuid}.jsonl`);
+	const sessionFile = path.join(
+		subagentSessionDir,
+		`${timestamp}_${safeName}${stepSuffix}${indexSuffix}_${uuid}.jsonl`,
+	);
 
 	const args: string[] = ["--mode", "rpc", "--session", sessionFile];
 
@@ -470,7 +483,15 @@ async function runSingleAgent(
 		exitCode: 0,
 		messages: [],
 		stderr: "",
-		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			cost: 0,
+			contextTokens: 0,
+			turns: 0,
+		},
 		model: effectiveModel,
 		step,
 		sessionFile,
@@ -501,7 +522,13 @@ async function runSingleAgent(
 				[RALPH_LOOP_DEPTH_ENV]: "1",
 				...(agent.permissionLevel ? { PI_PERMISSION_LEVEL: agent.permissionLevel } : {}),
 			};
-			const proc = spawn("pi", args, { cwd: cwd ?? defaultCwd, shell: false, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"], env });
+			const proc = spawn("pi", args, {
+				cwd: cwd ?? defaultCwd,
+				shell: false,
+				detached: process.platform !== "win32",
+				stdio: ["pipe", "pipe", "pipe"],
+				env,
+			});
 			let buffer = "";
 			let resolved = false;
 			let processClosed = false;
@@ -509,7 +536,10 @@ async function runSingleAgent(
 			let abortHandler: (() => void) | null = null;
 			let unregisterActive: (() => void) | null = null;
 			let requestId = 0;
-			const pending = new Map<string, { resolve: (response: any) => void; reject: (error: Error) => void }>();
+			const pending = new Map<
+				string,
+				{ resolve: (response: any) => void; reject: (error: Error) => void }
+			>();
 			let stdinClosed = false;
 
 			const rejectPending = (error: Error) => {
@@ -676,7 +706,13 @@ async function runSingleAgent(
 				}
 
 				if (event.type === "tool_execution_start" && event.toolCallId) {
-					upsertToolResult(event.toolCallId, event.toolName || "", { content: [], details: undefined }, false, true);
+					upsertToolResult(
+						event.toolCallId,
+						event.toolName || "",
+						{ content: [], details: undefined },
+						false,
+						true,
+					);
 					return;
 				}
 
@@ -688,7 +724,13 @@ async function runSingleAgent(
 
 				if (event.type === "tool_execution_end" && event.toolCallId) {
 					const result = event.result ?? { content: [], details: undefined };
-					upsertToolResult(event.toolCallId, event.toolName || "", result, Boolean(event.isError), false);
+					upsertToolResult(
+						event.toolCallId,
+						event.toolName || "",
+						result,
+						Boolean(event.isError),
+						false,
+					);
 					return;
 				}
 
@@ -733,7 +775,8 @@ async function runSingleAgent(
 				markStdinClosed(new Error("process closed"));
 				const exitCode = resolveRpcExitCode(code, sawAgentEnd, wasAborted);
 				if (!sawAgentEnd && !resolved && exitCode !== 0 && !wasAborted) {
-					currentResult.errorMessage = "Subagent exited before agent_end (RPC stream ended unexpectedly)";
+					currentResult.errorMessage =
+						"Subagent exited before agent_end (RPC stream ended unexpectedly)";
 				}
 				resolveOnce(exitCode);
 			});
@@ -741,7 +784,8 @@ async function runSingleAgent(
 			proc.on("error", (error) => {
 				processClosed = true;
 				markStdinClosed(error instanceof Error ? error : new Error("process error"));
-				currentResult.errorMessage = error instanceof Error ? error.message : "Subagent process error";
+				currentResult.errorMessage =
+					error instanceof Error ? error.message : "Subagent process error";
 				resolveOnce(1);
 			});
 
@@ -806,18 +850,24 @@ const ThinkingLevel = StringEnum(["off", "minimal", "low", "medium", "high", "xh
 
 const ChainItem = Type.Object({
 	agent: Type.String({ description: "Name of the agent to invoke" }),
-	task: Type.String({ description: "Standalone task for this chain step, with optional {previous} placeholder for prior output" }),
+	task: Type.String({
+		description:
+			"Standalone task for this chain step, with optional {previous} placeholder for prior output",
+	}),
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
-	model: Type.Optional(Type.String({ description: "Override the agent's model (e.g., 'claude-opus-4-5', 'gpt-5.2-codex')" })),
+	model: Type.Optional(
+		Type.String({
+			description: "Override the agent's model (e.g., 'claude-opus-4-5', 'gpt-5.2-codex')",
+		}),
+	),
 	thinking: Type.Optional(ThinkingLevel),
 });
 
 const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
-	description: 'Which agent directories to use. Default: "user". Use "both" to include project-local agents.',
+	description:
+		'Which agent directories to use. Default: "user". Use "both" to include project-local agents.',
 	default: "user",
 });
-
-
 
 const HandoffModeSchema = StringEnum(["none", "summary", "artifact"] as const, {
 	description: 'How previous iteration context is handed off. Default: "summary".',
@@ -832,9 +882,15 @@ const LoopParams = Type.Object({
 		}),
 	),
 	maxIterations: Type.Optional(
-		Type.Number({ description: `Max iterations (default ${DEFAULT_LOOP_MAX_ITERATIONS}, maximum ${MAX_LOOP_ITERATIONS}).` }),
+		Type.Number({
+			description: `Max iterations (default ${DEFAULT_LOOP_MAX_ITERATIONS}, maximum ${MAX_LOOP_ITERATIONS}).`,
+		}),
 	),
-	sleepMs: Type.Optional(Type.Number({ description: `Sleep between iterations in ms (default ${DEFAULT_LOOP_SLEEP_MS}).` })),
+	sleepMs: Type.Optional(
+		Type.Number({
+			description: `Sleep between iterations in ms (default ${DEFAULT_LOOP_SLEEP_MS}).`,
+		}),
+	),
 	conditionTimeoutMs: Type.Optional(
 		Type.Number({
 			description: `Maximum time for each condition command in ms (default ${DEFAULT_CONDITION_TIMEOUT_MS}, maximum ${MAX_CONDITION_TIMEOUT_MS}).`,
@@ -847,18 +903,39 @@ const LoopParams = Type.Object({
 		}),
 	),
 	completionConfirmations: Type.Optional(
-		Type.Number({ description: `Consecutive completion confirmations required (default ${DEFAULT_COMPLETION_CONFIRMATIONS}, maximum ${MAX_COMPLETION_CONFIRMATIONS}).` }),
+		Type.Number({
+			description: `Consecutive completion confirmations required (default ${DEFAULT_COMPLETION_CONFIRMATIONS}, maximum ${MAX_COMPLETION_CONFIRMATIONS}).`,
+		}),
 	),
 	handoffMode: Type.Optional(HandoffModeSchema),
-	agent: Type.Optional(Type.String({ description: "Name of the agent to invoke (for single mode)" })),
-	task: Type.Optional(Type.String({ description: "Standalone objective with acceptance criteria; it is sent again on every iteration (for single mode)" })),
-	chain: Type.Optional(Type.Array(ChainItem, { description: "Array of {agent, task} for sequential execution" })),
+	agent: Type.Optional(
+		Type.String({ description: "Name of the agent to invoke (for single mode)" }),
+	),
+	task: Type.Optional(
+		Type.String({
+			description:
+				"Standalone objective with acceptance criteria; it is sent again on every iteration (for single mode)",
+		}),
+	),
+	chain: Type.Optional(
+		Type.Array(ChainItem, { description: "Array of {agent, task} for sequential execution" }),
+	),
 	agentScope: Type.Optional(AgentScopeSchema),
 	confirmProjectAgents: Type.Optional(
-		Type.Boolean({ description: "Prompt before running project-local agents. Default: true.", default: true }),
+		Type.Boolean({
+			description: "Prompt before running project-local agents. Default: true.",
+			default: true,
+		}),
 	),
-	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process (single mode)" })),
-	model: Type.Optional(Type.String({ description: "Override the agent's model for single mode (e.g., 'claude-opus-4-5', 'gpt-5.2-codex')" })),
+	cwd: Type.Optional(
+		Type.String({ description: "Working directory for the agent process (single mode)" }),
+	),
+	model: Type.Optional(
+		Type.String({
+			description:
+				"Override the agent's model for single mode (e.g., 'claude-opus-4-5', 'gpt-5.2-codex')",
+		}),
+	),
 	thinking: Type.Optional(ThinkingLevel),
 });
 
@@ -948,15 +1025,15 @@ async function executeSubagentOnce(
 
 			const chainUpdate: OnUpdateCallback | undefined = onUpdate
 				? (partial) => {
-					const currentResult = partial.details?.results[0];
-					if (currentResult) {
-						const allResults = [...results, currentResult];
-						onUpdate({
-							content: partial.content,
-							details: makeDetails("chain")(allResults),
-						});
+						const currentResult = partial.details?.results[0];
+						if (currentResult) {
+							const allResults = [...results, currentResult];
+							onUpdate({
+								content: partial.content,
+								details: makeDetails("chain")(allResults),
+							});
+						}
 					}
-				}
 				: undefined;
 
 			const result = await runSingleAgent(
@@ -980,7 +1057,8 @@ async function executeSubagentOnce(
 			const isError =
 				result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
 			if (isError) {
-				const errorMsg = result.errorMessage || result.stderr || getFinalOutput(result.messages) || "(no output)";
+				const errorMsg =
+					result.errorMessage || result.stderr || getFinalOutput(result.messages) || "(no output)";
 				return {
 					output: `Chain stopped at step ${i + 1} (${step.agent}): ${errorMsg}`,
 					details: makeDetails("chain")(results),
@@ -1023,9 +1101,11 @@ async function executeSubagentOnce(
 			registerActiveRun,
 			initialFollowUps,
 		);
-		const isError = result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
+		const isError =
+			result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
 		if (isError) {
-			const errorMsg = result.errorMessage || result.stderr || getFinalOutput(result.messages) || "(no output)";
+			const errorMsg =
+				result.errorMessage || result.stderr || getFinalOutput(result.messages) || "(no output)";
 			return {
 				output: `Agent ${result.stopReason || "failed"}: ${errorMsg}`,
 				details: makeDetails("single")([result]),
@@ -1052,7 +1132,8 @@ export function parseLoopNumber(
 	allowZero = false,
 	maximum = Number.MAX_SAFE_INTEGER,
 ): number | null {
-	if (value === undefined || value === null || (typeof value === "string" && value.trim() === "")) return fallback;
+	if (value === undefined || value === null || (typeof value === "string" && value.trim() === ""))
+		return fallback;
 
 	let parsed: number;
 	if (typeof value === "number") {
@@ -1097,7 +1178,11 @@ export async function checkLoopCondition(
 	killed: boolean;
 	timedOut: boolean;
 }> {
-	const result = await pi.exec("bash", ["-lc", command], { cwd, signal, timeout: conditionTimeoutMs });
+	const result = await pi.exec("bash", ["-lc", command], {
+		cwd,
+		signal,
+		timeout: conditionTimeoutMs,
+	});
 	const stdout = (result.stdout || "").trim();
 	const killed = Boolean(result.killed);
 	const timedOut = killed && !signal?.aborted;
@@ -1204,11 +1289,17 @@ export function writeIterationArtifact(
 	}
 }
 
-function formatTailTruncationNotice(truncation: any, fullOutputPath: string | null, fullOutput: string): string {
+function formatTailTruncationNotice(
+	truncation: any,
+	fullOutputPath: string | null,
+	fullOutput: string,
+): string {
 	if (!truncation?.truncated) return "";
 	const startLine = truncation.totalLines - truncation.outputLines + 1;
 	const endLine = truncation.totalLines;
-	const fullOutputLabel = fullOutputPath ? `Full output: ${fullOutputPath}` : "Full output: (failed to save)";
+	const fullOutputLabel = fullOutputPath
+		? `Full output: ${fullOutputPath}`
+		: "Full output: (failed to save)";
 
 	if (truncation.lastLinePartial) {
 		const lastLine = fullOutput.split("\n").pop() || "";
@@ -1227,11 +1318,16 @@ function formatTailTruncationNotice(truncation: any, fullOutputPath: string | nu
 	return `[Showing lines ${startLine}-${endLine} of ${truncation.totalLines} (${formatSize(truncation.maxBytes)} limit). ${fullOutputLabel}]`;
 }
 
-function formatLastOutputForSummary(lastOutput: string, compact = false): { text: string; fullOutputPath: string | null } {
+function formatLastOutputForSummary(
+	lastOutput: string,
+	compact = false,
+): { text: string; fullOutputPath: string | null } {
 	// Keep the interactive tool result compact in the main chat. The complete
 	// output is still retained in the run details (and optionally written to a
 	// temp file). Non-UI modes retain the previous output limits.
-	const truncation = compact ? truncateTail(lastOutput, { maxLines: 20, maxBytes: 4_000 }) : truncateTail(lastOutput);
+	const truncation = compact
+		? truncateTail(lastOutput, { maxLines: 20, maxBytes: 4_000 })
+		: truncateTail(lastOutput);
 	let outputText = truncation.content || "(no output)";
 	if (!truncation.truncated) return { text: outputText, fullOutputPath: null };
 
@@ -1373,7 +1469,9 @@ export default function (pi: ExtensionAPI) {
 		const iterations = details?.iterations.length ?? loopControl.iterations;
 		const maxIterations = details?.maxIterations;
 		const maxLabel =
-			typeof maxIterations === "number" && maxIterations !== Number.MAX_SAFE_INTEGER ? `/${maxIterations}` : "";
+			typeof maxIterations === "number" && maxIterations !== Number.MAX_SAFE_INTEGER
+				? `/${maxIterations}`
+				: "";
 		return `ralph-loop ${loopControl.status}: ${iterations}${maxLabel}`;
 	};
 
@@ -1421,7 +1519,12 @@ export default function (pi: ExtensionAPI) {
 			if (sentToActive) {
 				ctx.ui.notify("Queued for current iteration.", "info");
 			} else {
-				ctx.ui.notify(once ? "One-off steering queued for next iteration." : "Steering queued for next iteration.", "info");
+				ctx.ui.notify(
+					once
+						? "One-off steering queued for next iteration."
+						: "Steering queued for next iteration.",
+					"info",
+				);
 			}
 			ctx.ui.setStatus("ralph-loop", getLoopStatusLine());
 		},
@@ -1538,17 +1641,21 @@ export default function (pi: ExtensionAPI) {
 			const iterations = details?.iterations.length ?? loopControl.iterations;
 			const maxIterations = details?.maxIterations;
 			const maxLabel =
-				typeof maxIterations === "number" && maxIterations !== Number.MAX_SAFE_INTEGER ? `/${maxIterations}` : "";
+				typeof maxIterations === "number" && maxIterations !== Number.MAX_SAFE_INTEGER
+					? `/${maxIterations}`
+					: "";
 			const steeringCount = loopControl.steering.length + loopControl.steeringOnce.length;
 			const followUpCount = loopControl.followUps.length;
 			const parts = [`Status: ${loopControl.status}`];
 			if (loopControl.runId) parts.push(`Run: ${loopControl.runId}`);
 			parts.push(`Iterations: ${iterations}${maxLabel}`);
-			if (loopControl.status === "idle" && details?.stopReason) parts.push(`Last stop: ${details.stopReason}`);
+			if (loopControl.status === "idle" && details?.stopReason)
+				parts.push(`Last stop: ${details.stopReason}`);
 			if (details?.stopOnCompletion) {
 				parts.push(`Completion: ${details.completionStreak}/${details.completionConfirmations}`);
 			}
-			if (details?.handoffMode && details.handoffMode !== "none") parts.push(`Handoff: ${details.handoffMode}`);
+			if (details?.handoffMode && details.handoffMode !== "none")
+				parts.push(`Handoff: ${details.handoffMode}`);
 			if (steeringCount > 0) parts.push(`Steering queued: ${steeringCount}`);
 			if (followUpCount > 0) parts.push(`Follow-ups queued: ${followUpCount}`);
 			ctx.ui.notify(parts.join(" | "), "info");
@@ -1592,7 +1699,8 @@ export default function (pi: ExtensionAPI) {
 			const refresh = () => {
 				// Completed runs are immutable snapshots. Ignore updates from a
 				// later run, and avoid waking a viewer for an unrelated run.
-				if (!selected.active || loopControl.runId !== selected.runId || !loopControl.lastDetails) return;
+				if (!selected.active || loopControl.runId !== selected.runId || !loopControl.lastDetails)
+					return;
 				selectedDetails = loopControl.lastDetails;
 				// RPC events can arrive in bursts. Invalidate immediately so a
 				// synchronous render sees fresh data, but schedule at most one TUI
@@ -1607,27 +1715,30 @@ export default function (pi: ExtensionAPI) {
 			};
 			viewerRefreshers.add(refresh);
 			try {
-				await ctx.ui.custom((tui: any, theme: any, _keybindings: any, done: (result: null) => void) => {
-					overlayTui = tui;
-					viewer = new RalphLoopViewer(
-						selected,
-						getDetails,
-						tui,
-						theme,
-						done,
-						ctx.cwd,
-						overlayConfig.heightPercent,
-					);
-					return viewer;
-				}, {
-					overlay: true,
-					overlayOptions: {
-						width: `${overlayConfig.widthPercent}%`,
-						maxHeight: `${overlayConfig.heightPercent}%`,
-						anchor: "center",
-						margin: 1,
+				await ctx.ui.custom(
+					(tui: any, theme: any, _keybindings: any, done: (result: null) => void) => {
+						overlayTui = tui;
+						viewer = new RalphLoopViewer(
+							selected,
+							getDetails,
+							tui,
+							theme,
+							done,
+							ctx.cwd,
+							overlayConfig.heightPercent,
+						);
+						return viewer;
 					},
-				});
+					{
+						overlay: true,
+						overlayOptions: {
+							width: `${overlayConfig.widthPercent}%`,
+							maxHeight: `${overlayConfig.heightPercent}%`,
+							anchor: "center",
+							margin: 1,
+						},
+					},
+				);
 			} finally {
 				viewerRefreshers.delete(refresh);
 				viewer?.dispose?.();
@@ -1797,7 +1908,8 @@ export default function (pi: ExtensionAPI) {
 			} else {
 				let textForInference: string | undefined;
 				if (typeof loopParams.task === "string") textForInference = loopParams.task;
-				else if (Array.isArray(loopParams.chain) && loopParams.chain.length > 0) textForInference = loopParams.chain[0].task;
+				else if (Array.isArray(loopParams.chain) && loopParams.chain.length > 0)
+					textForInference = loopParams.chain[0].task;
 				const inferred = inferConditionCommandFromText(textForInference);
 				if (inferred) {
 					conditionCommand = inferred;
@@ -1816,10 +1928,12 @@ export default function (pi: ExtensionAPI) {
 			);
 			if (maxIterations === null) {
 				return {
-					content: [{
-						type: "text",
-						text: `maxIterations must be a positive safe integer no greater than ${MAX_LOOP_ITERATIONS}.`,
-					}],
+					content: [
+						{
+							type: "text",
+							text: `maxIterations must be a positive safe integer no greater than ${MAX_LOOP_ITERATIONS}.`,
+						},
+					],
 					details: buildDetails({
 						stopReason: "invalid-params",
 						conditionCommand,
@@ -1853,10 +1967,12 @@ export default function (pi: ExtensionAPI) {
 			);
 			if (conditionTimeoutMs === null) {
 				return {
-					content: [{
-						type: "text",
-						text: `conditionTimeoutMs must be a positive safe integer no greater than ${MAX_CONDITION_TIMEOUT_MS}.`,
-					}],
+					content: [
+						{
+							type: "text",
+							text: `conditionTimeoutMs must be a positive safe integer no greater than ${MAX_CONDITION_TIMEOUT_MS}.`,
+						},
+					],
 					details: buildDetails({
 						stopReason: "invalid-params",
 						conditionCommand,
@@ -1873,7 +1989,15 @@ export default function (pi: ExtensionAPI) {
 			if (typeof stopOnCompletion !== "boolean") {
 				return {
 					content: [{ type: "text", text: "stopOnCompletion must be a boolean." }],
-					details: buildDetails({ stopReason: "invalid-params", conditionCommand, conditionSource, maxIterations, sleepMs, conditionTimeoutMs, prompt: promptInfo }),
+					details: buildDetails({
+						stopReason: "invalid-params",
+						conditionCommand,
+						conditionSource,
+						maxIterations,
+						sleepMs,
+						conditionTimeoutMs,
+						prompt: promptInfo,
+					}),
 					isError: true,
 				};
 			}
@@ -1886,8 +2010,21 @@ export default function (pi: ExtensionAPI) {
 			);
 			if (completionConfirmations === null) {
 				return {
-					content: [{ type: "text", text: `completionConfirmations must be a positive safe integer no greater than ${MAX_COMPLETION_CONFIRMATIONS}.` }],
-					details: buildDetails({ stopReason: "invalid-params", conditionCommand, conditionSource, maxIterations, sleepMs, conditionTimeoutMs, prompt: promptInfo }),
+					content: [
+						{
+							type: "text",
+							text: `completionConfirmations must be a positive safe integer no greater than ${MAX_COMPLETION_CONFIRMATIONS}.`,
+						},
+					],
+					details: buildDetails({
+						stopReason: "invalid-params",
+						conditionCommand,
+						conditionSource,
+						maxIterations,
+						sleepMs,
+						conditionTimeoutMs,
+						prompt: promptInfo,
+					}),
 					isError: true,
 				};
 			}
@@ -1896,13 +2033,23 @@ export default function (pi: ExtensionAPI) {
 			if (handoffMode !== "none" && handoffMode !== "summary" && handoffMode !== "artifact") {
 				return {
 					content: [{ type: "text", text: "handoffMode must be one of: none, summary, artifact." }],
-					details: buildDetails({ stopReason: "invalid-params", conditionCommand, conditionSource, maxIterations, sleepMs, conditionTimeoutMs, prompt: promptInfo }),
+					details: buildDetails({
+						stopReason: "invalid-params",
+						conditionCommand,
+						conditionSource,
+						maxIterations,
+						sleepMs,
+						conditionTimeoutMs,
+						prompt: promptInfo,
+					}),
 					isError: true,
 				};
 			}
 
 			const confirmProjectAgents = params.confirmProjectAgents ?? true;
-			const approved = confirmProjectAgents ? await confirmProjectAgentsOnce(loopParams, ctx) : true;
+			const approved = confirmProjectAgents
+				? await confirmProjectAgentsOnce(loopParams, ctx)
+				: true;
 			if (!approved) {
 				return {
 					content: [{ type: "text", text: "Canceled: project-local agents not approved." }],
@@ -1950,7 +2097,8 @@ export default function (pi: ExtensionAPI) {
 				killed: false,
 				timedOut: false,
 			};
-			const artifactDirectory = handoffMode === "none" ? null : createIterationArtifactDirectory(invocationRunId);
+			const artifactDirectory =
+				handoffMode === "none" ? null : createIterationArtifactDirectory(invocationRunId);
 			const artifactPaths: string[] = [];
 			let previousHandoff: string | null = null;
 			let previousArtifactPath: string | null = null;
@@ -2017,7 +2165,13 @@ export default function (pi: ExtensionAPI) {
 					break;
 				}
 
-				const condition = await checkLoopCondition(pi, conditionCommand, ctx.cwd, mergedSignal, conditionTimeoutMs);
+				const condition = await checkLoopCondition(
+					pi,
+					conditionCommand,
+					ctx.cwd,
+					mergedSignal,
+					conditionTimeoutMs,
+				);
 				lastCondition = {
 					stdout: condition.stdout,
 					stderr: condition.stderr,
@@ -2045,33 +2199,36 @@ export default function (pi: ExtensionAPI) {
 				const iterationIndex = i + 1;
 				const iterationUpdate: OnUpdateCallback | undefined = onUpdate
 					? (partial) => {
-						if (!partial.details) return;
-						const partialOutput = extractTextFromContent(partial.content);
-						const streamingIterations = [
-							...iterations,
-							{
-								index: iterationIndex,
-								details: partial.details,
-								output: partialOutput || "(running...)",
-								isError: partial.isError,
-							},
-						];
-						const details = buildLoopDetails(streamingIterations);
-						if (ctx.hasUI) {
-							ctx.ui.setStatus("ralph-loop", getLoopStatusLine());
+							if (!partial.details) return;
+							const partialOutput = extractTextFromContent(partial.content);
+							const streamingIterations = [
+								...iterations,
+								{
+									index: iterationIndex,
+									details: partial.details,
+									output: partialOutput || "(running...)",
+									isError: partial.isError,
+								},
+							];
+							const details = buildLoopDetails(streamingIterations);
+							if (ctx.hasUI) {
+								ctx.ui.setStatus("ralph-loop", getLoopStatusLine());
+							}
+							onUpdate({
+								content: partial.content ?? [
+									{ type: "text", text: `ralph-loop iteration ${iterationIndex} running...` },
+								],
+								details,
+							});
 						}
-						onUpdate({
-							content: partial.content ?? [
-								{ type: "text", text: `ralph-loop iteration ${iterationIndex} running...` },
-							],
-							details,
-						});
-					}
 					: undefined;
 
 				let runResult: LoopExecutionResult | null = null;
 				const steeringOnceCount = loopControl.steeringOnce.length;
-				const steeringText = formatSteeringText([...loopControl.steering, ...loopControl.steeringOnce]);
+				const steeringText = formatSteeringText([
+					...loopControl.steering,
+					...loopControl.steeringOnce,
+				]);
 				const iterationParams = applyIterationContextToParams(
 					applySteeringToParams(baseLoopParams, steeringText),
 					{
@@ -2108,15 +2265,30 @@ export default function (pi: ExtensionAPI) {
 					clearPausedState(loopControl);
 				}
 
-				const artifactPath = writeIterationArtifact(artifactDirectory, iterationIndex, runResult.details, runResult.output);
+				const artifactPath = writeIterationArtifact(
+					artifactDirectory,
+					iterationIndex,
+					runResult.details,
+					runResult.output,
+				);
 				if (artifactPath) {
 					artifactPaths.push(artifactPath);
 					previousArtifactPath = artifactPath;
 				}
-				previousHandoff = handoffMode === "summary" ? extractRalphHandoff(getCompletionText(runResult.details)) : null;
+				previousHandoff =
+					handoffMode === "summary"
+						? extractRalphHandoff(getCompletionText(runResult.details))
+						: null;
 				const completionText = getCompletionText(runResult.details);
-				const completion = !runResult.isError && stopOnCompletion && isCompletionClaimValid(completionText, handoffMode);
-				const streak = updateCompletionStreak(completionStreak, completion, completionConfirmations);
+				const completion =
+					!runResult.isError &&
+					stopOnCompletion &&
+					isCompletionClaimValid(completionText, handoffMode);
+				const streak = updateCompletionStreak(
+					completionStreak,
+					completion,
+					completionConfirmations,
+				);
 				completionStreak = streak.streak;
 
 				iterations.push({
@@ -2158,11 +2330,13 @@ export default function (pi: ExtensionAPI) {
 				`Completion: ${stopOnCompletion ? `${completionStreak}/${completionConfirmations} confirmations` : "disabled"}.`,
 				`Handoff: ${handoffMode}.`,
 			];
-			if (artifactPaths.length > 0) summaryLines.push(`Iteration artifacts: ${artifactPaths.join(", ")}`);
+			if (artifactPaths.length > 0)
+				summaryLines.push(`Iteration artifacts: ${artifactPaths.join(", ")}`);
 
 			if (lastCondition.stdout) summaryLines.push(`Condition stdout: ${lastCondition.stdout}`);
 			if (lastCondition.stderr) summaryLines.push(`Condition stderr: ${lastCondition.stderr}`);
-			if (lastCondition.exitCode !== 0) summaryLines.push(`Condition exit code: ${lastCondition.exitCode}`);
+			if (lastCondition.exitCode !== 0)
+				summaryLines.push(`Condition exit code: ${lastCondition.exitCode}`);
 			if (errorMessage && errorMessage !== lastOutput) summaryLines.push(`Error: ${errorMessage}`);
 			let lastOutputFullPath: string | null = null;
 			if (lastOutput) {
@@ -2188,7 +2362,9 @@ export default function (pi: ExtensionAPI) {
 				(finalDetails as any).lastOutputPath = lastOutputFullPath;
 			}
 			const summaryText = summaryLines.join("\n\n");
-			const isError = ["error", "aborted", "condition-error", "condition-timeout"].includes(stopReason);
+			const isError = ["error", "aborted", "condition-error", "condition-timeout"].includes(
+				stopReason,
+			);
 			return {
 				content: [{ type: "text", text: summaryText }],
 				details: finalDetails,
@@ -2200,13 +2376,18 @@ export default function (pi: ExtensionAPI) {
 			const scope: AgentScope = args.agentScope ?? "user";
 			const hasChain = Array.isArray(args.chain) && args.chain.length > 0;
 			const hasSingle = Boolean(args.agent || args.task);
-			const mode = hasChain ? `chain (${args.chain.length} steps)` : hasSingle ? `single ${args.agent || "(auto)"}` : "auto";
+			const mode = hasChain
+				? `chain (${args.chain.length} steps)`
+				: hasSingle
+					? `single ${args.agent || "(auto)"}`
+					: "auto";
 			const condition = args.conditionCommand ? `cond: ${args.conditionCommand}` : "cond: (auto)";
 			const maxIterations = args.maxIterations ?? DEFAULT_LOOP_MAX_ITERATIONS;
 			const sleepMs = args.sleepMs ?? DEFAULT_LOOP_SLEEP_MS;
 			const conditionTimeoutMs = args.conditionTimeoutMs ?? DEFAULT_CONDITION_TIMEOUT_MS;
 			const stopOnCompletion = args.stopOnCompletion ?? DEFAULT_STOP_ON_COMPLETION;
-			const completionConfirmations = args.completionConfirmations ?? DEFAULT_COMPLETION_CONFIRMATIONS;
+			const completionConfirmations =
+				args.completionConfirmations ?? DEFAULT_COMPLETION_CONFIRMATIONS;
 			const handoffMode = args.handoffMode ?? DEFAULT_HANDOFF_MODE;
 			const promptInfo = buildLoopPromptInfo(args);
 			let text =
@@ -2233,16 +2414,17 @@ export default function (pi: ExtensionAPI) {
 
 			const iterations = details.iterations || [];
 			const status = details.status || "completed";
-			const isError = ["error", "aborted", "condition-error", "condition-timeout"].includes(details.stopReason);
+			const isError = ["error", "aborted", "condition-error", "condition-timeout"].includes(
+				details.stopReason,
+			);
 			const isActive = status === "running" || status === "paused" || status === "stopping";
 			const icon = isError
 				? theme.fg("error", "✗")
 				: isActive
 					? theme.fg("accent", "•")
 					: theme.fg("success", "✓");
-			const maxIterations = typeof details.maxIterations === "number"
-				? `/${details.maxIterations}`
-				: "";
+			const maxIterations =
+				typeof details.maxIterations === "number" ? `/${details.maxIterations}` : "";
 			const runId = details.runId || "(legacy run)";
 			const lines = [
 				`${icon} ${theme.fg("toolTitle", theme.bold("ralph_loop "))}${theme.fg("accent", `${status}: ${iterations.length}${maxIterations} iteration${iterations.length === 1 ? "" : "s"}`)}`,

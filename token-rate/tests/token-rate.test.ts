@@ -4,11 +4,7 @@
  * Run with: pnpm -C token-rate test
  */
 
-import {
-  TokenRateTracker,
-  computeTps,
-  formatTokenRate,
-} from "../token-rate-core.js";
+import { TokenRateTracker, computeTps, formatTokenRate } from "../token-rate-core.js";
 
 function assertEqual<T>(actual: T, expected: T, message: string): void {
   if (!Object.is(actual, expected)) {

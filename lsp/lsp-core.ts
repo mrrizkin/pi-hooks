@@ -60,25 +60,52 @@ const RESTART_BACKOFF_MS = [250, 1_000, 4_000];
 const STABLE_PROCESS_MS = 30_000;
 
 export const LANGUAGE_IDS: Record<string, string> = {
-  ".dart": "dart", ".ts": "typescript", ".tsx": "typescriptreact",
-  ".js": "javascript", ".jsx": "javascriptreact", ".mjs": "javascript",
-  ".cjs": "javascript", ".mts": "typescript", ".cts": "typescript",
-  ".vue": "vue", ".svelte": "svelte", ".astro": "astro",
-  ".py": "python", ".pyi": "python", ".go": "go", ".rs": "rust",
-  ".kt": "kotlin", ".kts": "kotlin",
+  ".dart": "dart",
+  ".ts": "typescript",
+  ".tsx": "typescriptreact",
+  ".js": "javascript",
+  ".jsx": "javascriptreact",
+  ".mjs": "javascript",
+  ".cjs": "javascript",
+  ".mts": "typescript",
+  ".cts": "typescript",
+  ".vue": "vue",
+  ".svelte": "svelte",
+  ".astro": "astro",
+  ".py": "python",
+  ".pyi": "python",
+  ".go": "go",
+  ".rs": "rust",
+  ".kt": "kotlin",
+  ".kts": "kotlin",
   ".swift": "swift",
-  ".rb": "ruby", ".rake": "ruby", ".gemspec": "ruby", ".ru": "ruby",
-  ".c": "c", ".h": "c", ".cc": "cpp", ".cpp": "cpp", ".cxx": "cpp",
-  ".hpp": "cpp", ".hxx": "cpp",
+  ".rb": "ruby",
+  ".rake": "ruby",
+  ".gemspec": "ruby",
+  ".ru": "ruby",
+  ".c": "c",
+  ".h": "c",
+  ".cc": "cpp",
+  ".cpp": "cpp",
+  ".cxx": "cpp",
+  ".hpp": "cpp",
+  ".hxx": "cpp",
 };
 
 // Types
 export interface LSPServerConfig extends LSPServerDefinition {
   findRoot: (file: string, cwd: string) => string | undefined;
-  spawn: (root: string) => Promise<{ process: ChildProcessWithoutNullStreams; initOptions?: Record<string, unknown> } | undefined>;
+  spawn: (
+    root: string,
+  ) => Promise<
+    { process: ChildProcessWithoutNullStreams; initOptions?: Record<string, unknown> } | undefined
+  >;
 }
 
-interface OpenFile { version: number; lastAccess: number; }
+interface OpenFile {
+  version: number;
+  lastAccess: number;
+}
 
 interface LSPClient {
   connection: MessageConnection;
@@ -98,25 +125,32 @@ interface LSPClient {
 export interface FileDiagnosticItem {
   file: string;
   diagnostics: Diagnostic[];
-  status: 'ok' | 'timeout' | 'error' | 'unsupported';
+  status: "ok" | "timeout" | "error" | "unsupported";
   error?: string;
 }
 
-export interface FileDiagnosticsResult { items: FileDiagnosticItem[]; }
+export interface FileDiagnosticsResult {
+  items: FileDiagnosticItem[];
+}
 
 // Utilities
 const SEARCH_PATHS = [
   ...(process.env.PATH?.split(path.delimiter) || []),
-  "/usr/local/bin", "/opt/homebrew/bin",
-  `${process.env.HOME}/.pub-cache/bin`, `${process.env.HOME}/fvm/default/bin`,
-  `${process.env.HOME}/go/bin`, `${process.env.HOME}/.cargo/bin`,
+  "/usr/local/bin",
+  "/opt/homebrew/bin",
+  `${process.env.HOME}/.pub-cache/bin`,
+  `${process.env.HOME}/fvm/default/bin`,
+  `${process.env.HOME}/go/bin`,
+  `${process.env.HOME}/.cargo/bin`,
 ];
 
 function which(cmd: string): string | undefined {
   const ext = process.platform === "win32" ? ".exe" : "";
   for (const dir of SEARCH_PATHS) {
     const full = path.join(dir, cmd + ext);
-    try { if (fs.existsSync(full) && fs.statSync(full).isFile()) return full; } catch {}
+    try {
+      if (fs.existsSync(full) && fs.statSync(full).isFile()) return full;
+    } catch {}
   }
 }
 
@@ -152,12 +186,23 @@ function findRoot(file: string, cwd: string, markers: string[]): string | undefi
 function timeout<T>(promise: Promise<T>, ms: number, name: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`${name} timed out`)), ms);
-    promise.then(r => { clearTimeout(timer); resolve(r); }, e => { clearTimeout(timer); reject(e); });
+    promise.then(
+      (r) => {
+        clearTimeout(timer);
+        resolve(r);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
   });
 }
 
-
-function terminateProcess(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals = "SIGTERM"): void {
+function terminateProcess(
+  child: ChildProcessWithoutNullStreams,
+  signal: NodeJS.Signals = "SIGTERM",
+): void {
   if (child.exitCode !== null) return;
   try {
     // Language servers may spawn helper processes. Detached process groups let us
@@ -165,7 +210,11 @@ function terminateProcess(child: ChildProcessWithoutNullStreams, signal: NodeJS.
     if (process.platform !== "win32" && child.pid) process.kill(-child.pid, signal);
     else child.kill(signal);
   } catch {
-    try { child.kill(signal); } catch { /* already exited */ }
+    try {
+      child.kill(signal);
+    } catch {
+      /* already exited */
+    }
   }
 }
 
@@ -175,7 +224,9 @@ function resolveExecutable(command: string): string | undefined {
       if (!fs.statSync(command).isFile()) return undefined;
       if (process.platform !== "win32") fs.accessSync(command, fs.constants.X_OK);
       return command;
-    } catch { return undefined; }
+    } catch {
+      return undefined;
+    }
   }
   return which(command);
 }
@@ -189,9 +240,17 @@ function simpleSpawn(bin: string, args: string[] = ["--stdio"]): LSPServerConfig
   };
 }
 
-async function spawnChecked(cmd: string, args: string[], cwd: string): Promise<ChildProcessWithoutNullStreams | undefined> {
+async function spawnChecked(
+  cmd: string,
+  args: string[],
+  cwd: string,
+): Promise<ChildProcessWithoutNullStreams | undefined> {
   try {
-    const child = spawn(cmd, args, { cwd, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(cmd, args, {
+      cwd,
+      detached: process.platform !== "win32",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
 
     // If the process exits immediately (e.g. unsupported flag), treat it as a failure
     return await new Promise((resolve) => {
@@ -226,7 +285,11 @@ async function spawnChecked(cmd: string, args: string[], cwd: string): Promise<C
   }
 }
 
-async function spawnWithFallback(cmd: string, argsVariants: string[][], cwd: string): Promise<ChildProcessWithoutNullStreams | undefined> {
+async function spawnWithFallback(
+  cmd: string,
+  argsVariants: string[][],
+  cwd: string,
+): Promise<ChildProcessWithoutNullStreams | undefined> {
   for (const args of argsVariants) {
     const child = await spawnChecked(cmd, args, cwd);
     if (child) return child;
@@ -273,7 +336,8 @@ function findRootSwift(file: string, cwd: string): string | undefined {
 
     // Xcode projects/workspaces store their marker files *inside* a directory
     if (dirContainsNestedProjectFile(current, ".xcodeproj", "project.pbxproj")) return current;
-    if (dirContainsNestedProjectFile(current, ".xcworkspace", "contents.xcworkspacedata")) return current;
+    if (dirContainsNestedProjectFile(current, ".xcworkspace", "contents.xcworkspacedata"))
+      return current;
 
     const parent = path.dirname(current);
     if (parent === current) break;
@@ -297,11 +361,14 @@ async function runCommand(cmd: string, args: string[], cwd: string): Promise<boo
 
 async function ensureJetBrainsKotlinLspInstalled(): Promise<string | undefined> {
   // Opt-in download (to avoid surprising network activity)
-  const allowDownload = process.env.PI_LSP_AUTO_DOWNLOAD_KOTLIN_LSP === "1" || process.env.PI_LSP_AUTO_DOWNLOAD_KOTLIN_LSP === "true";
+  const allowDownload =
+    process.env.PI_LSP_AUTO_DOWNLOAD_KOTLIN_LSP === "1" ||
+    process.env.PI_LSP_AUTO_DOWNLOAD_KOTLIN_LSP === "true";
   const installDir = path.join(os.homedir(), ".pi", "agent", "lsp", "kotlin-ls");
-  const launcher = process.platform === "win32"
-    ? path.join(installDir, "kotlin-lsp.cmd")
-    : path.join(installDir, "kotlin-lsp.sh");
+  const launcher =
+    process.platform === "win32"
+      ? path.join(installDir, "kotlin-lsp.cmd")
+      : path.join(installDir, "kotlin-lsp.sh");
 
   if (fs.existsSync(launcher)) return launcher;
   if (!allowDownload) return undefined;
@@ -334,7 +401,14 @@ async function ensureJetBrainsKotlinLspInstalled(): Promise<string | undefined> 
     else if (platform === "linux") kotlinPlatform = "linux";
     else if (platform === "win32") kotlinPlatform = "win";
 
-    const supportedCombos = new Set(["mac-x64", "mac-aarch64", "linux-x64", "linux-aarch64", "win-x64", "win-aarch64"]);
+    const supportedCombos = new Set([
+      "mac-x64",
+      "mac-aarch64",
+      "linux-x64",
+      "linux-aarch64",
+      "win-x64",
+      "win-aarch64",
+    ]);
     const combo = `${kotlinPlatform}-${kotlinArch}`;
     if (!supportedCombos.has(combo)) return undefined;
 
@@ -348,11 +422,15 @@ async function ensureJetBrainsKotlinLspInstalled(): Promise<string | undefined> 
     if (!okDownload || !fs.existsSync(zipPath)) return undefined;
 
     const okUnzip = await runCommand(unzip, ["-o", zipPath, "-d", installDir], installDir);
-    try { fs.rmSync(zipPath, { force: true }); } catch {}
+    try {
+      fs.rmSync(zipPath, { force: true });
+    } catch {}
     if (!okUnzip) return undefined;
 
     if (process.platform !== "win32") {
-      try { fs.chmodSync(launcher, 0o755); } catch {}
+      try {
+        fs.chmodSync(launcher, 0o755);
+      } catch {}
     }
 
     return fs.existsSync(launcher) ? launcher : undefined;
@@ -361,14 +439,20 @@ async function ensureJetBrainsKotlinLspInstalled(): Promise<string | undefined> 
   }
 }
 
-async function spawnKotlinLanguageServer(root: string): Promise<ChildProcessWithoutNullStreams | undefined> {
+async function spawnKotlinLanguageServer(
+  root: string,
+): Promise<ChildProcessWithoutNullStreams | undefined> {
   // Prefer JetBrains Kotlin LSP (Kotlin/kotlin-lsp) – better diagnostics for Gradle/Android projects.
   const explicit = process.env.PI_LSP_KOTLIN_LSP_PATH;
   if (explicit && fs.existsSync(explicit)) {
     return spawnWithFallback(explicit, [["--stdio"]], root);
   }
 
-  const jetbrains = which("kotlin-lsp") || which("kotlin-lsp.sh") || which("kotlin-lsp.cmd") || await ensureJetBrainsKotlinLspInstalled();
+  const jetbrains =
+    which("kotlin-lsp") ||
+    which("kotlin-lsp.sh") ||
+    which("kotlin-lsp.cmd") ||
+    (await ensureJetBrainsKotlinLspInstalled());
   if (jetbrains) {
     return spawnWithFallback(jetbrains, [["--stdio"]], root);
   }
@@ -379,7 +463,9 @@ async function spawnKotlinLanguageServer(root: string): Promise<ChildProcessWith
   return spawnWithFallback(kls, [[]], root);
 }
 
-async function spawnSourcekitLsp(root: string): Promise<ChildProcessWithoutNullStreams | undefined> {
+async function spawnSourcekitLsp(
+  root: string,
+): Promise<ChildProcessWithoutNullStreams | undefined> {
   const direct = which("sourcekit-lsp");
   if (direct) return spawnWithFallback(direct, [[], ["--stdio"]], root);
 
@@ -392,14 +478,20 @@ async function spawnSourcekitLsp(root: string): Promise<ChildProcessWithoutNullS
 // Builtin server definitions. Their custom spawn functions retain language-specific
 // discovery and fallback behavior unless global config overrides command/args.
 function languageIds(extensions: string[]): Record<string, string> {
-  return Object.fromEntries(extensions.map((extension) => [extension, LANGUAGE_IDS[extension] ?? "plaintext"]));
+  return Object.fromEntries(
+    extensions.map((extension) => [extension, LANGUAGE_IDS[extension] ?? "plaintext"]),
+  );
 }
 
 export const LSP_SERVERS: LSPServerConfig[] = [
   {
-    id: "dart", command: "dart", args: ["language-server", "--protocol=lsp"],
-    extensions: [".dart"], rootMarkers: ["pubspec.yaml", "analysis_options.yaml"],
-    languageIds: { ".dart": "dart" }, diagnosticsWaitMs: 3000,
+    id: "dart",
+    command: "dart",
+    args: ["language-server", "--protocol=lsp"],
+    extensions: [".dart"],
+    rootMarkers: ["pubspec.yaml", "analysis_options.yaml"],
+    languageIds: { ".dart": "dart" },
+    diagnosticsWaitMs: 3000,
     findRoot: (f, cwd) => findRoot(f, cwd, ["pubspec.yaml", "analysis_options.yaml"]),
     spawn: async (root) => {
       let dart = which("dart");
@@ -413,7 +505,10 @@ export const LSP_SERVERS: LSPServerConfig[] = [
               const dir = path.dirname(fs.realpathSync(flutter));
               for (const p of ["cache/dart-sdk/bin/dart", "../cache/dart-sdk/bin/dart"]) {
                 const c = path.join(dir, p);
-                if (fs.existsSync(c)) { dart = c; break; }
+                if (fs.existsSync(c)) {
+                  dart = c;
+                  break;
+                }
               }
             }
           }
@@ -425,10 +520,13 @@ export const LSP_SERVERS: LSPServerConfig[] = [
     },
   },
   {
-    id: "typescript", command: "typescript-language-server", args: ["--stdio"],
+    id: "typescript",
+    command: "typescript-language-server",
+    args: ["--stdio"],
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"],
     rootMarkers: ["package.json", "tsconfig.json", "jsconfig.json"],
-    languageIds: languageIds([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"]), diagnosticsWaitMs: 3000,
+    languageIds: languageIds([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"]),
+    diagnosticsWaitMs: 3000,
     findRoot: (f, cwd) => {
       if (findNearestFile(path.dirname(f), ["deno.json", "deno.jsonc"], cwd)) return undefined;
       return findRoot(f, cwd, ["package.json", "tsconfig.json", "jsconfig.json"]);
@@ -442,29 +540,67 @@ export const LSP_SERVERS: LSPServerConfig[] = [
     },
   },
   {
-    id: "vue", command: "vue-language-server", args: ["--stdio"], extensions: [".vue"],
-    rootMarkers: ["package.json", "vite.config.ts", "vite.config.js"], languageIds: { ".vue": "vue" }, diagnosticsWaitMs: 3000,
-    findRoot: (f, cwd) => findRoot(f, cwd, ["package.json", "vite.config.ts", "vite.config.js"]), spawn: simpleSpawn("vue-language-server"),
+    id: "vue",
+    command: "vue-language-server",
+    args: ["--stdio"],
+    extensions: [".vue"],
+    rootMarkers: ["package.json", "vite.config.ts", "vite.config.js"],
+    languageIds: { ".vue": "vue" },
+    diagnosticsWaitMs: 3000,
+    findRoot: (f, cwd) => findRoot(f, cwd, ["package.json", "vite.config.ts", "vite.config.js"]),
+    spawn: simpleSpawn("vue-language-server"),
   },
   {
-    id: "svelte", command: "svelteserver", args: ["--stdio"], extensions: [".svelte"],
-    rootMarkers: ["package.json", "svelte.config.js"], languageIds: { ".svelte": "svelte" }, diagnosticsWaitMs: 3000,
-    findRoot: (f, cwd) => findRoot(f, cwd, ["package.json", "svelte.config.js"]), spawn: simpleSpawn("svelteserver"),
+    id: "svelte",
+    command: "svelteserver",
+    args: ["--stdio"],
+    extensions: [".svelte"],
+    rootMarkers: ["package.json", "svelte.config.js"],
+    languageIds: { ".svelte": "svelte" },
+    diagnosticsWaitMs: 3000,
+    findRoot: (f, cwd) => findRoot(f, cwd, ["package.json", "svelte.config.js"]),
+    spawn: simpleSpawn("svelteserver"),
   },
   {
-    id: "pyright", command: "pyright-langserver", args: ["--stdio"], extensions: [".py", ".pyi"],
-    rootMarkers: ["pyproject.toml", "setup.py", "requirements.txt", "pyrightconfig.json"], languageIds: languageIds([".py", ".pyi"]), diagnosticsWaitMs: 3000,
-    findRoot: (f, cwd) => findRoot(f, cwd, ["pyproject.toml", "setup.py", "requirements.txt", "pyrightconfig.json"]), spawn: simpleSpawn("pyright-langserver"),
+    id: "pyright",
+    command: "pyright-langserver",
+    args: ["--stdio"],
+    extensions: [".py", ".pyi"],
+    rootMarkers: ["pyproject.toml", "setup.py", "requirements.txt", "pyrightconfig.json"],
+    languageIds: languageIds([".py", ".pyi"]),
+    diagnosticsWaitMs: 3000,
+    findRoot: (f, cwd) =>
+      findRoot(f, cwd, ["pyproject.toml", "setup.py", "requirements.txt", "pyrightconfig.json"]),
+    spawn: simpleSpawn("pyright-langserver"),
   },
   {
-    id: "gopls", command: "gopls", args: [], extensions: [".go"], rootMarkers: ["go.work", "go.mod"],
-    languageIds: { ".go": "go" }, diagnosticsWaitMs: 3000,
-    findRoot: (f, cwd) => findRoot(f, cwd, ["go.work"]) || findRoot(f, cwd, ["go.mod"]), spawn: simpleSpawn("gopls", []),
+    id: "gopls",
+    command: "gopls",
+    args: [],
+    extensions: [".go"],
+    rootMarkers: ["go.work", "go.mod"],
+    languageIds: { ".go": "go" },
+    diagnosticsWaitMs: 3000,
+    findRoot: (f, cwd) => findRoot(f, cwd, ["go.work"]) || findRoot(f, cwd, ["go.mod"]),
+    spawn: simpleSpawn("gopls", []),
   },
   {
-    id: "kotlin", command: "kotlin-lsp", args: ["--stdio"], extensions: [".kt", ".kts"],
-    rootMarkers: ["settings.gradle.kts", "settings.gradle", "build.gradle.kts", "build.gradle", "gradlew", "gradlew.bat", "gradle.properties", "pom.xml"],
-    languageIds: languageIds([".kt", ".kts"]), diagnosticsWaitMs: 30000,
+    id: "kotlin",
+    command: "kotlin-lsp",
+    args: ["--stdio"],
+    extensions: [".kt", ".kts"],
+    rootMarkers: [
+      "settings.gradle.kts",
+      "settings.gradle",
+      "build.gradle.kts",
+      "build.gradle",
+      "gradlew",
+      "gradlew.bat",
+      "gradle.properties",
+      "pom.xml",
+    ],
+    languageIds: languageIds([".kt", ".kts"]),
+    diagnosticsWaitMs: 30000,
     findRoot: (f, cwd) => findRootKotlin(f, cwd),
     spawn: async (root) => {
       const proc = await spawnKotlinLanguageServer(root);
@@ -473,8 +609,13 @@ export const LSP_SERVERS: LSPServerConfig[] = [
     },
   },
   {
-    id: "swift", command: "sourcekit-lsp", args: [], extensions: [".swift"],
-    rootMarkers: ["Package.swift"], languageIds: { ".swift": "swift" }, diagnosticsWaitMs: 20000,
+    id: "swift",
+    command: "sourcekit-lsp",
+    args: [],
+    extensions: [".swift"],
+    rootMarkers: ["Package.swift"],
+    languageIds: { ".swift": "swift" },
+    diagnosticsWaitMs: 20000,
     findRoot: (f, cwd) => findRootSwift(f, cwd),
     spawn: async (root) => {
       const proc = await spawnSourcekitLsp(root);
@@ -483,21 +624,31 @@ export const LSP_SERVERS: LSPServerConfig[] = [
     },
   },
   {
-    id: "rust-analyzer", command: "rust-analyzer", args: [], extensions: [".rs"], rootMarkers: ["Cargo.toml"],
-    languageIds: { ".rs": "rust" }, diagnosticsWaitMs: 20000,
-    findRoot: (f, cwd) => findRoot(f, cwd, ["Cargo.toml"]), spawn: simpleSpawn("rust-analyzer", []),
+    id: "rust-analyzer",
+    command: "rust-analyzer",
+    args: [],
+    extensions: [".rs"],
+    rootMarkers: ["Cargo.toml"],
+    languageIds: { ".rs": "rust" },
+    diagnosticsWaitMs: 20000,
+    findRoot: (f, cwd) => findRoot(f, cwd, ["Cargo.toml"]),
+    spawn: simpleSpawn("rust-analyzer", []),
   },
   {
-    id: "ruby", command: "ruby-lsp", args: [],
+    id: "ruby",
+    command: "ruby-lsp",
+    args: [],
     extensions: [".rb", ".rake", ".gemspec", ".ru"],
     rootMarkers: ["Gemfile", "Gemfile.lock", ".ruby-version"],
-    languageIds: languageIds([".rb", ".rake", ".gemspec", ".ru"]), diagnosticsWaitMs: 20000,
+    languageIds: languageIds([".rb", ".rake", ".gemspec", ".ru"]),
+    diagnosticsWaitMs: 20000,
     findRoot: (f, cwd) => findRoot(f, cwd, ["Gemfile", "Gemfile.lock", ".ruby-version"]),
     spawn: async (root) => {
       const explicit = process.env.PI_LSP_RUBY_LSP_PATH;
-      const localCandidates = process.platform === "win32"
-        ? [path.join(root, "bin", "ruby-lsp.cmd"), path.join(root, "bin", "ruby-lsp")]
-        : [path.join(root, "bin", "ruby-lsp")];
+      const localCandidates =
+        process.platform === "win32"
+          ? [path.join(root, "bin", "ruby-lsp.cmd"), path.join(root, "bin", "ruby-lsp")]
+          : [path.join(root, "bin", "ruby-lsp")];
       const command = explicit
         ? resolveExecutable(explicit)
         : localCandidates.map(resolveExecutable).find(Boolean) || resolveExecutable("ruby-lsp");
@@ -516,10 +667,13 @@ export const LSP_SERVERS: LSPServerConfig[] = [
     },
   },
   {
-    id: "clangd", command: "clangd", args: ["--background-index"],
+    id: "clangd",
+    command: "clangd",
+    args: ["--background-index"],
     extensions: [".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hxx"],
     rootMarkers: ["compile_commands.json", ".clangd", "CMakeLists.txt"],
-    languageIds: languageIds([".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hxx"]), diagnosticsWaitMs: 3000,
+    languageIds: languageIds([".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hxx"]),
+    diagnosticsWaitMs: 3000,
     findRoot: (f, cwd) => findRoot(f, cwd, ["compile_commands.json", ".clangd", "CMakeLists.txt"]),
     spawn: simpleSpawn("clangd", ["--background-index"]),
   },
@@ -528,14 +682,20 @@ export const LSP_SERVERS: LSPServerConfig[] = [
 type RuntimeServerConfig = ResolvedLSPServerConfig & Pick<LSPServerConfig, "findRoot" | "spawn">;
 
 function runtimeServerConfig(resolved: ResolvedLSPServerConfig): RuntimeServerConfig {
-  const builtin = resolved.builtin ? LSP_SERVERS.find((server) => server.id === resolved.id) : undefined;
+  const builtin = resolved.builtin
+    ? LSP_SERVERS.find((server) => server.id === resolved.id)
+    : undefined;
   const useBuiltinRoot = Boolean(builtin && !resolved.globalOverrides.has("rootMarkers"));
-  const useBuiltinSpawn = Boolean(builtin && !resolved.globalOverrides.has("command") && !resolved.globalOverrides.has("args"));
+  const useBuiltinSpawn = Boolean(
+    builtin && !resolved.globalOverrides.has("command") && !resolved.globalOverrides.has("args"),
+  );
   const baseSpawn = useBuiltinSpawn ? builtin!.spawn : simpleSpawn(resolved.command, resolved.args);
 
   return {
     ...resolved,
-    findRoot: useBuiltinRoot ? builtin!.findRoot : (file, cwd) => findRoot(file, cwd, resolved.rootMarkers),
+    findRoot: useBuiltinRoot
+      ? builtin!.findRoot
+      : (file, cwd) => findRoot(file, cwd, resolved.rootMarkers),
     spawn: async (root) => {
       const handle = await baseSpawn(root);
       if (!handle) return undefined;
@@ -562,7 +722,9 @@ export function getOrCreateManager(cwd: string): LSPManager {
   return sharedManager;
 }
 
-export function getManager(): LSPManager | null { return sharedManager; }
+export function getManager(): LSPManager | null {
+  return sharedManager;
+}
 
 export async function shutdownManager(): Promise<void> {
   const manager = sharedManager;
@@ -602,7 +764,10 @@ export class LSPManager {
   private configWarnings: LSPConfigWarning[];
   private cleanupTimer: NodeJS.Timeout | null = null;
 
-  constructor(cwd: string, configPaths: { globalConfigPath?: string; projectConfigPath?: string } = {}) {
+  constructor(
+    cwd: string,
+    configPaths: { globalConfigPath?: string; projectConfigPath?: string } = {},
+  ) {
     this.cwd = cwd;
     const config = resolveLSPConfig({
       cwd,
@@ -610,19 +775,25 @@ export class LSPManager {
       projectConfigPath: configPaths.projectConfigPath,
       globalConfigPath: configPaths.globalConfigPath,
     });
-    this.serverConfigs = config.servers.filter((server) => !server.disabled).map(runtimeServerConfig);
+    this.serverConfigs = config.servers
+      .filter((server) => !server.disabled)
+      .map(runtimeServerConfig);
     this.configWarnings = [...config.warnings];
 
     // These builtins have special executable discovery/fallback logic. Make
     // an explicit global command/args override visible because it opts out.
     const specialDiscoveryServers = new Set(["dart", "typescript", "kotlin", "swift", "ruby"]);
     for (const server of config.servers) {
-      if (server.builtin && specialDiscoveryServers.has(server.id)
-        && (server.globalOverrides.has("command") || server.globalOverrides.has("args"))) {
+      if (
+        server.builtin &&
+        specialDiscoveryServers.has(server.id) &&
+        (server.globalOverrides.has("command") || server.globalOverrides.has("args"))
+      ) {
         this.configWarnings.push({
           path: configPaths.globalConfigPath ?? defaultGlobalLSPConfigPath(),
           server: server.id,
-          message: "command/args override uses the configured command directly and disables builtin executable discovery/fallbacks",
+          message:
+            "command/args override uses the configured command directly and disables builtin executable discovery/fallbacks",
         });
       }
     }
@@ -630,9 +801,13 @@ export class LSPManager {
     this.cleanupTimer.unref();
   }
 
-  getConfigWarnings(): readonly LSPConfigWarning[] { return this.configWarnings; }
+  getConfigWarnings(): readonly LSPConfigWarning[] {
+    return this.configWarnings;
+  }
 
-  getServerConfigs(): readonly ResolvedLSPServerConfig[] { return this.serverConfigs; }
+  getServerConfigs(): readonly ResolvedLSPServerConfig[] {
+    return this.serverConfigs;
+  }
 
   getServersForFile(filePath: string): readonly ResolvedLSPServerConfig[] {
     const extension = path.extname(filePath).toLowerCase();
@@ -665,9 +840,11 @@ export class LSPManager {
     client.openFiles.delete(absPath);
     if (client.closed) return;
     try {
-      void client.connection.sendNotification(DidCloseTextDocumentNotification.type, {
-        textDocument: { uri: pathToFileURL(absPath).href },
-      }).catch(() => {});
+      void client.connection
+        .sendNotification(DidCloseTextDocumentNotification.type, {
+          textDocument: { uri: pathToFileURL(absPath).href },
+        })
+        .catch(() => {});
     } catch {}
   }
 
@@ -680,12 +857,15 @@ export class LSPManager {
     if (oldest) this.closeFile(client, oldest.path);
   }
 
-  private key(id: string, root: string) { return `${id}:${root}`; }
+  private key(id: string, root: string) {
+    return `${id}:${root}`;
+  }
 
   private recordFailure(k: string, error: unknown): void {
     const previous = this.failures.get(k);
     const attempts = Math.min((previous?.attempts ?? 0) + 1, MAX_RESTART_ATTEMPTS);
-    const backoff = RESTART_BACKOFF_MS[attempts - 1] ?? RESTART_BACKOFF_MS[RESTART_BACKOFF_MS.length - 1];
+    const backoff =
+      RESTART_BACKOFF_MS[attempts - 1] ?? RESTART_BACKOFF_MS[RESTART_BACKOFF_MS.length - 1];
     this.failures.set(k, {
       attempts,
       nextRetryAt: Date.now() + backoff,
@@ -701,7 +881,11 @@ export class LSPManager {
 
   /** Return process-level health for servers known to this manager. */
   getHealth(): LSPHealth[] {
-    const keys = new Set([...this.clients.keys(), ...this.failures.keys(), ...this.spawning.keys()]);
+    const keys = new Set([
+      ...this.clients.keys(),
+      ...this.failures.keys(),
+      ...this.spawning.keys(),
+    ]);
     return [...keys].map((key) => {
       const [server, ...rootParts] = key.split(":");
       const root = rootParts.join(":");
@@ -714,25 +898,44 @@ export class LSPManager {
         return { server, root, status: "starting", attempts: failure?.attempts ?? 0 };
       }
       if (failure && Date.now() < failure.nextRetryAt) {
-        return { server, root, status: "backoff", attempts: failure.attempts, retryAt: failure.nextRetryAt, error: failure.message };
+        return {
+          server,
+          root,
+          status: "backoff",
+          attempts: failure.attempts,
+          retryAt: failure.nextRetryAt,
+          error: failure.message,
+        };
       }
-      return { server, root, status: "failed", attempts: failure?.attempts ?? 0, error: failure?.message };
+      return {
+        server,
+        root,
+        status: "failed",
+        attempts: failure?.attempts ?? 0,
+        error: failure?.message,
+      };
     });
   }
 
-  private async initClient(config: RuntimeServerConfig, root: string): Promise<LSPClient | undefined> {
+  private async initClient(
+    config: RuntimeServerConfig,
+    root: string,
+  ): Promise<LSPClient | undefined> {
     const k = this.key(config.id, root);
     let spawnedProcess: ChildProcessWithoutNullStreams | undefined;
     let failureRecorded = false;
     try {
       const handle = await config.spawn(root);
       spawnedProcess = handle?.process;
-      if (!handle) { this.recordFailure(k, `Unable to start ${config.id}`); return undefined; }
+      if (!handle) {
+        this.recordFailure(k, `Unable to start ${config.id}`);
+        return undefined;
+      }
 
       const reader = new StreamMessageReader(handle.process.stdout!);
       const writer = new StreamMessageWriter(handle.process.stdin!);
       const conn = createMessageConnection(reader, writer);
-      
+
       // Prevent crashes from stream errors
       handle.process.stdin?.on("error", () => {});
       handle.process.stdout?.on("error", () => {});
@@ -745,7 +948,8 @@ export class LSPManager {
           for (const line of text.split(/\r?\n/)) {
             if (!line.trim()) continue;
             stderr.push(line);
-            if (stderr.length > MAX_STDERR_LINES) stderr.splice(0, stderr.length - MAX_STDERR_LINES);
+            if (stderr.length > MAX_STDERR_LINES)
+              stderr.splice(0, stderr.length - MAX_STDERR_LINES);
           }
         } catch {
           // ignore
@@ -767,18 +971,33 @@ export class LSPManager {
         failureRecorded: false,
       };
 
-      conn.onNotification("textDocument/publishDiagnostics", (params: { uri: string; diagnostics: Diagnostic[] }) => {
-        const fpRaw = decodeURIComponent(new URL(params.uri).pathname);
-        const fp = normalizeFsPath(fpRaw);
+      conn.onNotification(
+        "textDocument/publishDiagnostics",
+        (params: { uri: string; diagnostics: Diagnostic[] }) => {
+          const fpRaw = decodeURIComponent(new URL(params.uri).pathname);
+          const fp = normalizeFsPath(fpRaw);
 
-        client.diagnostics.set(fp, params.diagnostics);
-        // Notify both raw and normalized paths (macOS often reports /private/var vs /var)
-        const listeners1 = client.listeners.get(fp);
-        const listeners2 = fp !== fpRaw ? client.listeners.get(fpRaw) : undefined;
+          client.diagnostics.set(fp, params.diagnostics);
+          // Notify both raw and normalized paths (macOS often reports /private/var vs /var)
+          const listeners1 = client.listeners.get(fp);
+          const listeners2 = fp !== fpRaw ? client.listeners.get(fpRaw) : undefined;
 
-        listeners1?.slice().forEach(fn => { try { fn(); } catch { /* listener error */ } });
-        listeners2?.slice().forEach(fn => { try { fn(); } catch { /* listener error */ } });
-      });
+          listeners1?.slice().forEach((fn) => {
+            try {
+              fn();
+            } catch {
+              /* listener error */
+            }
+          });
+          listeners2?.slice().forEach((fn) => {
+            try {
+              fn();
+            } catch {
+              /* listener error */
+            }
+          });
+        },
+      );
 
       // Handle errors to prevent crashes
       conn.onError((error) => {
@@ -803,7 +1022,9 @@ export class LSPManager {
       conn.onRequest("window/workDoneProgress/create", () => null);
       conn.onRequest("client/registerCapability", () => {});
       conn.onRequest("client/unregisterCapability", () => {});
-      conn.onRequest("workspace/workspaceFolders", () => [{ name: "workspace", uri: pathToFileURL(root).href }]);
+      conn.onRequest("workspace/workspaceFolders", () => [
+        { name: "workspace", uri: pathToFileURL(root).href },
+      ]);
 
       handle.process.on("exit", (code, signal) => {
         client.closed = true;
@@ -811,7 +1032,10 @@ export class LSPManager {
         if (!client.stopping && !client.failureRecorded) {
           client.failureRecorded = true;
           failureRecorded = true;
-          this.recordFailure(k, `Language server exited${code !== null ? ` with code ${code}` : ` (${signal || "unknown signal"})`}`);
+          this.recordFailure(
+            k,
+            `Language server exited${code !== null ? ` with code ${code}` : ` (${signal || "unknown signal"})`}`,
+          );
         }
       });
       handle.process.on("error", (error) => {
@@ -826,31 +1050,41 @@ export class LSPManager {
 
       conn.listen();
 
-      const initResult = await timeout(conn.sendRequest(InitializeRequest.method, {
-        rootUri: pathToFileURL(root).href,
-        rootPath: root,
-        processId: process.pid,
-        workspaceFolders: [{ name: "workspace", uri: pathToFileURL(root).href }],
-        initializationOptions: handle.initOptions ?? {},
-        capabilities: {
-          window: { workDoneProgress: true },
-          workspace: { configuration: true },
-          textDocument: {
-            synchronization: { didSave: true, didOpen: true, didChange: true, didClose: true },
-            publishDiagnostics: { versionSupport: true },
-            diagnostic: { dynamicRegistration: false, relatedDocumentSupport: false },
+      const initResult = await timeout(
+        conn.sendRequest(InitializeRequest.method, {
+          rootUri: pathToFileURL(root).href,
+          rootPath: root,
+          processId: process.pid,
+          workspaceFolders: [{ name: "workspace", uri: pathToFileURL(root).href }],
+          initializationOptions: handle.initOptions ?? {},
+          capabilities: {
+            window: { workDoneProgress: true },
+            workspace: { configuration: true },
+            textDocument: {
+              synchronization: { didSave: true, didOpen: true, didChange: true, didClose: true },
+              publishDiagnostics: { versionSupport: true },
+              diagnostic: { dynamicRegistration: false, relatedDocumentSupport: false },
+            },
           },
-        },
-      }), INIT_TIMEOUT_MS, `${config.id} init`);
+        }),
+        INIT_TIMEOUT_MS,
+        `${config.id} init`,
+      );
 
       client.capabilities = (initResult as any)?.capabilities;
 
       // The server may exit immediately after initialization (for example when a
       // configured command is unavailable). Treat writes during that shutdown as
       // best-effort so vscode-jsonrpc cannot surface an unhandled rejection.
-      try { void conn.sendNotification(InitializedNotification.type, {}).catch(() => {}); } catch {}
+      try {
+        void conn.sendNotification(InitializedNotification.type, {}).catch(() => {});
+      } catch {}
       if (handle.initOptions) {
-        try { void conn.sendNotification("workspace/didChangeConfiguration", { settings: handle.initOptions }).catch(() => {}); } catch {}
+        try {
+          void conn
+            .sendNotification("workspace/didChangeConfiguration", { settings: handle.initOptions })
+            .catch(() => {});
+        } catch {}
       }
       // A server that stays alive briefly is considered healthy; this prevents
       // one transient crash from permanently disabling the project.
@@ -906,7 +1140,13 @@ export class LSPManager {
     const extension = path.extname(fp).toLowerCase();
     return client.config.languageIds[extension] ?? LANGUAGE_IDS[extension] ?? "plaintext";
   }
-  private readFile(fp: string): string | null { try { return fs.readFileSync(fp, "utf-8"); } catch { return null; } }
+  private readFile(fp: string): string | null {
+    try {
+      return fs.readFileSync(fp, "utf-8");
+    } catch {
+      return null;
+    }
+  }
 
   private explainNoLsp(absPath: string): string {
     const ext = path.extname(absPath).toLowerCase();
@@ -914,18 +1154,25 @@ export class LSPManager {
 
     if (config) {
       const root = runtimeServerConfig(config).findRoot(absPath, this.cwd);
-      if (!root) return `No ${config.id} project root detected for ${ext}. Add one of the configured root markers or use a file inside the project.`;
+      if (!root)
+        return `No ${config.id} project root detected for ${ext}. Add one of the configured root markers or use a file inside the project.`;
 
       const failure = this.failures.get(this.key(config.id, root));
       if (failure) {
-        const retry = failure.nextRetryAt > Date.now()
-          ? ` Retry in ${Math.ceil((failure.nextRetryAt - Date.now()) / 1000)}s.`
-          : " Retry will be attempted on the next request.";
+        const retry =
+          failure.nextRetryAt > Date.now()
+            ? ` Retry in ${Math.ceil((failure.nextRetryAt - Date.now()) / 1000)}s.`
+            : " Retry will be attempted on the next request.";
         return `${config.id} failed for root ${root}.${failure.message ? ` ${failure.message}.` : ""}${retry}`;
       }
 
       if (config.id === "kotlin") {
-        const hasJetbrains = !!(which("kotlin-lsp") || which("kotlin-lsp.sh") || which("kotlin-lsp.cmd") || process.env.PI_LSP_KOTLIN_LSP_PATH);
+        const hasJetbrains = !!(
+          which("kotlin-lsp") ||
+          which("kotlin-lsp.sh") ||
+          which("kotlin-lsp.cmd") ||
+          process.env.PI_LSP_KOTLIN_LSP_PATH
+        );
         if (!hasJetbrains && !which("kotlin-language-server")) {
           return "No Kotlin LSP binary found. Install Kotlin/kotlin-lsp (recommended) or org.javacs/kotlin-language-server.";
         }
@@ -933,7 +1180,13 @@ export class LSPManager {
       if (config.id === "swift" && !which("sourcekit-lsp") && !which("xcrun")) {
         return "sourcekit-lsp not found (and xcrun missing).";
       }
-      if (config.id === "ruby" && !process.env.PI_LSP_RUBY_LSP_PATH && !which("ruby-lsp") && !which("bundle") && !fs.existsSync(path.join(root, "bin", "ruby-lsp"))) {
+      if (
+        config.id === "ruby" &&
+        !process.env.PI_LSP_RUBY_LSP_PATH &&
+        !which("ruby-lsp") &&
+        !which("bundle") &&
+        !fs.existsSync(path.join(root, "bin", "ruby-lsp"))
+      ) {
         return "Ruby LSP not found. Install the ruby-lsp gem, set PI_LSP_RUBY_LSP_PATH, or add bin/ruby-lsp to the project.";
       }
       return `${config.id} is unavailable for root ${root}; verify its executable is installed and on PATH.`;
@@ -945,29 +1198,50 @@ export class LSPManager {
       : `No configured LSP for ${ext}. Supported project files require a recognized project root and an installed language-server binary.`;
   }
 
-  private toPos(line: number, col: number) { return { line: Math.max(0, line - 1), character: Math.max(0, col - 1) }; }
+  private toPos(line: number, col: number) {
+    return { line: Math.max(0, line - 1), character: Math.max(0, col - 1) };
+  }
 
-  private normalizeLocs(result: Location | Location[] | LocationLink[] | null | undefined): Location[] {
+  private normalizeLocs(
+    result: Location | Location[] | LocationLink[] | null | undefined,
+  ): Location[] {
     if (!result) return [];
     const items = Array.isArray(result) ? result : [result];
     if (!items.length) return [];
     if ("uri" in items[0] && "range" in items[0]) return items as Location[];
-    return (items as LocationLink[]).map(l => ({ uri: l.targetUri, range: l.targetSelectionRange ?? l.targetRange }));
+    return (items as LocationLink[]).map((l) => ({
+      uri: l.targetUri,
+      range: l.targetSelectionRange ?? l.targetRange,
+    }));
   }
 
-  private normalizeSymbols(result: DocumentSymbol[] | SymbolInformation[] | null | undefined): DocumentSymbol[] {
+  private normalizeSymbols(
+    result: DocumentSymbol[] | SymbolInformation[] | null | undefined,
+  ): DocumentSymbol[] {
     if (!result?.length) return [];
     const first = result[0];
     if ("location" in first) {
-      return (result as SymbolInformation[]).map(s => ({
-        name: s.name, kind: s.kind, range: s.location.range, selectionRange: s.location.range,
-        detail: s.containerName, tags: s.tags, deprecated: s.deprecated, children: [],
+      return (result as SymbolInformation[]).map((s) => ({
+        name: s.name,
+        kind: s.kind,
+        range: s.location.range,
+        selectionRange: s.location.range,
+        detail: s.containerName,
+        tags: s.tags,
+        deprecated: s.deprecated,
+        children: [],
       }));
     }
     return result as DocumentSymbol[];
   }
 
-  private async openOrUpdate(clients: LSPClient[], absPath: string, uri: string, content: string, evict = true) {
+  private async openOrUpdate(
+    clients: LSPClient[],
+    absPath: string,
+    uri: string,
+    content: string,
+    evict = true,
+  ) {
     const now = Date.now();
     for (const client of clients) {
       const langId = this.langId(client, absPath);
@@ -977,25 +1251,36 @@ export class LSPManager {
         if (state) {
           const v = state.version + 1;
           client.openFiles.set(absPath, { version: v, lastAccess: now });
-          void client.connection.sendNotification(DidChangeTextDocumentNotification.type, {
-            textDocument: { uri, version: v }, contentChanges: [{ text: content }],
-          }).catch(() => {});
+          void client.connection
+            .sendNotification(DidChangeTextDocumentNotification.type, {
+              textDocument: { uri, version: v },
+              contentChanges: [{ text: content }],
+            })
+            .catch(() => {});
         } else {
           // For some servers (e.g. kotlin-language-server), diagnostics only start flowing after a didChange.
           // We open at version 0, then immediately send a full-content didChange at version 1.
           client.openFiles.set(absPath, { version: 1, lastAccess: now });
-          void client.connection.sendNotification(DidOpenTextDocumentNotification.type, {
-            textDocument: { uri, languageId: langId, version: 0, text: content },
-          }).catch(() => {});
-          void client.connection.sendNotification(DidChangeTextDocumentNotification.type, {
-            textDocument: { uri, version: 1 }, contentChanges: [{ text: content }],
-          }).catch(() => {});
+          void client.connection
+            .sendNotification(DidOpenTextDocumentNotification.type, {
+              textDocument: { uri, languageId: langId, version: 0, text: content },
+            })
+            .catch(() => {});
+          void client.connection
+            .sendNotification(DidChangeTextDocumentNotification.type, {
+              textDocument: { uri, version: 1 },
+              contentChanges: [{ text: content }],
+            })
+            .catch(() => {});
           if (evict) this.evictLRU(client);
         }
         // Send didSave to trigger analysis (important for TypeScript)
-        void client.connection.sendNotification(DidSaveTextDocumentNotification.type, {
-          textDocument: { uri }, text: content,
-        }).catch(() => {});
+        void client.connection
+          .sendNotification(DidSaveTextDocumentNotification.type, {
+            textDocument: { uri },
+            text: content,
+          })
+          .catch(() => {});
       } catch {}
     }
   }
@@ -1009,8 +1294,13 @@ export class LSPManager {
     return { clients, absPath, uri: pathToFileURL(absPath).href, content };
   }
 
-  private waitForDiagnostics(client: LSPClient, absPath: string, timeoutMs: number, isNew: boolean): Promise<boolean> {
-    return new Promise(resolve => {
+  private waitForDiagnostics(
+    client: LSPClient,
+    absPath: string,
+    timeoutMs: number,
+    isNew: boolean,
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
       if (client.closed) return resolve(false);
 
       let resolved = false;
@@ -1058,7 +1348,11 @@ export class LSPManager {
     });
   }
 
-  private async pullDiagnostics(client: LSPClient, absPath: string, uri: string): Promise<{ diagnostics: Diagnostic[]; responded: boolean }> {
+  private async pullDiagnostics(
+    client: LSPClient,
+    absPath: string,
+    uri: string,
+  ): Promise<{ diagnostics: Diagnostic[]; responded: boolean }> {
     if (client.closed) return { diagnostics: [], responded: false };
 
     // Only attempt Pull Diagnostics if the server advertises support.
@@ -1107,41 +1401,64 @@ export class LSPManager {
     }
   }
 
-  async touchFileAndWait(filePath: string, timeoutMs: number): Promise<{ diagnostics: Diagnostic[]; receivedResponse: boolean; unsupported?: boolean; error?: string }> {
+  async touchFileAndWait(
+    filePath: string,
+    timeoutMs: number,
+  ): Promise<{
+    diagnostics: Diagnostic[];
+    receivedResponse: boolean;
+    unsupported?: boolean;
+    error?: string;
+  }> {
     const absPath = this.resolve(filePath);
 
     if (!fs.existsSync(absPath)) {
-      return { diagnostics: [], receivedResponse: false, unsupported: true, error: "File not found" };
+      return {
+        diagnostics: [],
+        receivedResponse: false,
+        unsupported: true,
+        error: "File not found",
+      };
     }
 
     const clients = await this.getClientsForFile(absPath);
     if (!clients.length) {
-      return { diagnostics: [], receivedResponse: false, unsupported: true, error: this.explainNoLsp(absPath) };
+      return {
+        diagnostics: [],
+        receivedResponse: false,
+        unsupported: true,
+        error: this.explainNoLsp(absPath),
+      };
     }
 
     const content = this.readFile(absPath);
     if (content === null) {
-      return { diagnostics: [], receivedResponse: false, unsupported: true, error: "Could not read file" };
+      return {
+        diagnostics: [],
+        receivedResponse: false,
+        unsupported: true,
+        error: "Could not read file",
+      };
     }
 
     const uri = pathToFileURL(absPath).href;
-    const isNew = clients.some(c => !c.openFiles.has(absPath));
+    const isNew = clients.some((c) => !c.openFiles.has(absPath));
 
-    const waits = clients.map(c => this.waitForDiagnostics(c, absPath, timeoutMs, isNew));
+    const waits = clients.map((c) => this.waitForDiagnostics(c, absPath, timeoutMs, isNew));
     await this.openOrUpdate(clients, absPath, uri, content);
     const results = await Promise.all(waits);
 
-    let responded = results.some(r => r);
+    let responded = results.some((r) => r);
     const diags: Diagnostic[] = [];
     for (const c of clients) {
       const d = c.diagnostics.get(absPath);
       if (d) diags.push(...d);
     }
-    if (!responded && clients.some(c => c.diagnostics.has(absPath))) responded = true;
+    if (!responded && clients.some((c) => c.diagnostics.has(absPath))) responded = true;
 
     // If we didn't get pushed diagnostics (common for some servers), try pull diagnostics.
     if (!responded || diags.length === 0) {
-      const pulled = await Promise.all(clients.map(c => this.pullDiagnostics(c, absPath, uri)));
+      const pulled = await Promise.all(clients.map((c) => this.pullDiagnostics(c, absPath, uri)));
       for (let i = 0; i < clients.length; i++) {
         const r = pulled[i];
         if (r.responded) responded = true;
@@ -1155,38 +1472,57 @@ export class LSPManager {
     return {
       diagnostics: diags,
       receivedResponse: responded,
-      ...(!responded ? { error: "LSP server did not respond. It may still be starting or may have crashed; retry the request." } : {}),
+      ...(!responded
+        ? {
+            error:
+              "LSP server did not respond. It may still be starting or may have crashed; retry the request.",
+          }
+        : {}),
     };
   }
 
   async getDiagnosticsForFiles(files: string[], timeoutMs: number): Promise<FileDiagnosticsResult> {
-    const unique = [...new Set(files.map(f => this.resolve(f)))];
+    const unique = [...new Set(files.map((f) => this.resolve(f)))];
     const results: FileDiagnosticItem[] = [];
     const toClose: Map<LSPClient, string[]> = new Map();
 
     for (const absPath of unique) {
       if (!fs.existsSync(absPath)) {
-        results.push({ file: absPath, diagnostics: [], status: 'error', error: 'File not found' });
+        results.push({ file: absPath, diagnostics: [], status: "error", error: "File not found" });
         continue;
       }
 
       let clients: LSPClient[];
-      try { clients = await this.getClientsForFile(absPath); }
-      catch (e) { results.push({ file: absPath, diagnostics: [], status: 'error', error: String(e) }); continue; }
+      try {
+        clients = await this.getClientsForFile(absPath);
+      } catch (e) {
+        results.push({ file: absPath, diagnostics: [], status: "error", error: String(e) });
+        continue;
+      }
 
       if (!clients.length) {
-        results.push({ file: absPath, diagnostics: [], status: 'unsupported', error: this.explainNoLsp(absPath) });
+        results.push({
+          file: absPath,
+          diagnostics: [],
+          status: "unsupported",
+          error: this.explainNoLsp(absPath),
+        });
         continue;
       }
 
       const content = this.readFile(absPath);
       if (!content) {
-        results.push({ file: absPath, diagnostics: [], status: 'error', error: 'Could not read file' });
+        results.push({
+          file: absPath,
+          diagnostics: [],
+          status: "error",
+          error: "Could not read file",
+        });
         continue;
       }
 
       const uri = pathToFileURL(absPath).href;
-      const isNew = clients.some(c => !c.openFiles.has(absPath));
+      const isNew = clients.some((c) => !c.openFiles.has(absPath));
 
       for (const c of clients) {
         if (!c.openFiles.has(absPath)) {
@@ -1195,17 +1531,20 @@ export class LSPManager {
         }
       }
 
-      const waits = clients.map(c => this.waitForDiagnostics(c, absPath, timeoutMs, isNew));
-      await this.openOrUpdate(clients, absPath, uri, content, false)
+      const waits = clients.map((c) => this.waitForDiagnostics(c, absPath, timeoutMs, isNew));
+      await this.openOrUpdate(clients, absPath, uri, content, false);
       const waitResults = await Promise.all(waits);
 
       const diags: Diagnostic[] = [];
-      for (const c of clients) { const d = c.diagnostics.get(absPath); if (d) diags.push(...d); }
+      for (const c of clients) {
+        const d = c.diagnostics.get(absPath);
+        if (d) diags.push(...d);
+      }
 
-      let responded = waitResults.some(r => r) || diags.length > 0;
+      let responded = waitResults.some((r) => r) || diags.length > 0;
 
       if (!responded || diags.length === 0) {
-        const pulled = await Promise.all(clients.map(c => this.pullDiagnostics(c, absPath, uri)));
+        const pulled = await Promise.all(clients.map((c) => this.pullDiagnostics(c, absPath, uri)));
         for (let i = 0; i < clients.length; i++) {
           const r = pulled[i];
           if (r.responded) responded = true;
@@ -1217,15 +1556,25 @@ export class LSPManager {
       }
 
       if (!responded && !diags.length) {
-        results.push({ file: absPath, diagnostics: [], status: 'timeout', error: 'LSP server did not respond. It may be starting or have crashed; retry the request.' });
+        results.push({
+          file: absPath,
+          diagnostics: [],
+          status: "timeout",
+          error:
+            "LSP server did not respond. It may be starting or have crashed; retry the request.",
+        });
       } else {
-        results.push({ file: absPath, diagnostics: diags, status: 'ok' });
+        results.push({ file: absPath, diagnostics: diags, status: "ok" });
       }
     }
 
     // Cleanup opened files
-    for (const [c, fps] of toClose) { for (const fp of fps) this.closeFile(c, fp); }
-    for (const c of this.clients.values()) { while (c.openFiles.size > MAX_OPEN_FILES) this.evictLRU(c); }
+    for (const [c, fps] of toClose) {
+      for (const fp of fps) this.closeFile(c, fp);
+    }
+    for (const c of this.clients.values()) {
+      while (c.openFiles.size > MAX_OPEN_FILES) this.evictLRU(c);
+    }
 
     return { items: results };
   }
@@ -1235,11 +1584,21 @@ export class LSPManager {
     if (!l) return [];
     await this.openOrUpdate(l.clients, l.absPath, l.uri, l.content);
     const pos = this.toPos(line, col);
-    const results = await Promise.all(l.clients.map(async c => {
-      if (c.closed) return [];
-      try { return this.normalizeLocs(await c.connection.sendRequest(DefinitionRequest.type, { textDocument: { uri: l.uri }, position: pos })); }
-      catch { return []; }
-    }));
+    const results = await Promise.all(
+      l.clients.map(async (c) => {
+        if (c.closed) return [];
+        try {
+          return this.normalizeLocs(
+            await c.connection.sendRequest(DefinitionRequest.type, {
+              textDocument: { uri: l.uri },
+              position: pos,
+            }),
+          );
+        } catch {
+          return [];
+        }
+      }),
+    );
     return results.flat();
   }
 
@@ -1248,11 +1607,22 @@ export class LSPManager {
     if (!l) return [];
     await this.openOrUpdate(l.clients, l.absPath, l.uri, l.content);
     const pos = this.toPos(line, col);
-    const results = await Promise.all(l.clients.map(async c => {
-      if (c.closed) return [];
-      try { return this.normalizeLocs(await c.connection.sendRequest(ReferencesRequest.type, { textDocument: { uri: l.uri }, position: pos, context: { includeDeclaration: true } })); }
-      catch { return []; }
-    }));
+    const results = await Promise.all(
+      l.clients.map(async (c) => {
+        if (c.closed) return [];
+        try {
+          return this.normalizeLocs(
+            await c.connection.sendRequest(ReferencesRequest.type, {
+              textDocument: { uri: l.uri },
+              position: pos,
+              context: { includeDeclaration: true },
+            }),
+          );
+        } catch {
+          return [];
+        }
+      }),
+    );
     return results.flat();
   }
 
@@ -1263,8 +1633,13 @@ export class LSPManager {
     const pos = this.toPos(line, col);
     for (const c of l.clients) {
       if (c.closed) continue;
-      try { const r = await c.connection.sendRequest(HoverRequest.type, { textDocument: { uri: l.uri }, position: pos }); if (r) return r; }
-      catch {}
+      try {
+        const r = await c.connection.sendRequest(HoverRequest.type, {
+          textDocument: { uri: l.uri },
+          position: pos,
+        });
+        if (r) return r;
+      } catch {}
     }
     return null;
   }
@@ -1276,8 +1651,13 @@ export class LSPManager {
     const pos = this.toPos(line, col);
     for (const c of l.clients) {
       if (c.closed) continue;
-      try { const r = await c.connection.sendRequest(SignatureHelpRequest.type, { textDocument: { uri: l.uri }, position: pos }); if (r) return r; }
-      catch {}
+      try {
+        const r = await c.connection.sendRequest(SignatureHelpRequest.type, {
+          textDocument: { uri: l.uri },
+          position: pos,
+        });
+        if (r) return r;
+      } catch {}
     }
     return null;
   }
@@ -1286,15 +1666,29 @@ export class LSPManager {
     const l = await this.loadFile(fp);
     if (!l) return [];
     await this.openOrUpdate(l.clients, l.absPath, l.uri, l.content);
-    const results = await Promise.all(l.clients.map(async c => {
-      if (c.closed) return [];
-      try { return this.normalizeSymbols(await c.connection.sendRequest(DocumentSymbolRequest.type, { textDocument: { uri: l.uri } })); }
-      catch { return []; }
-    }));
+    const results = await Promise.all(
+      l.clients.map(async (c) => {
+        if (c.closed) return [];
+        try {
+          return this.normalizeSymbols(
+            await c.connection.sendRequest(DocumentSymbolRequest.type, {
+              textDocument: { uri: l.uri },
+            }),
+          );
+        } catch {
+          return [];
+        }
+      }),
+    );
     return results.flat();
   }
 
-  async rename(fp: string, line: number, col: number, newName: string): Promise<WorkspaceEdit | null> {
+  async rename(
+    fp: string,
+    line: number,
+    col: number,
+    newName: string,
+  ): Promise<WorkspaceEdit | null> {
     const l = await this.loadFile(fp);
     if (!l) return null;
     await this.openOrUpdate(l.clients, l.absPath, l.uri, l.content);
@@ -1313,15 +1707,21 @@ export class LSPManager {
     return null;
   }
 
-  async getCodeActions(fp: string, startLine: number, startCol: number, endLine?: number, endCol?: number): Promise<(CodeAction | Command)[]> {
+  async getCodeActions(
+    fp: string,
+    startLine: number,
+    startCol: number,
+    endLine?: number,
+    endCol?: number,
+  ): Promise<(CodeAction | Command)[]> {
     const l = await this.loadFile(fp);
     if (!l) return [];
     await this.openOrUpdate(l.clients, l.absPath, l.uri, l.content);
-    
+
     const start = this.toPos(startLine, startCol);
     const end = this.toPos(endLine ?? startLine, endCol ?? startCol);
     const range = { start, end };
-    
+
     // Get diagnostics for this range to include in context
     const diagnostics: Diagnostic[] = [];
     for (const c of l.clients) {
@@ -1330,23 +1730,32 @@ export class LSPManager {
         if (this.rangesOverlap(d.range, range)) diagnostics.push(d);
       }
     }
-    
-    const results = await Promise.all(l.clients.map(async c => {
-      if (c.closed) return [];
-      try {
-        const r = await c.connection.sendRequest(CodeActionRequest.type, {
-          textDocument: { uri: l.uri },
-          range,
-          context: { diagnostics, only: [CodeActionKind.QuickFix, CodeActionKind.Refactor, CodeActionKind.Source] },
-        });
-        return r || [];
-      } catch { return []; }
-    }));
+
+    const results = await Promise.all(
+      l.clients.map(async (c) => {
+        if (c.closed) return [];
+        try {
+          const r = await c.connection.sendRequest(CodeActionRequest.type, {
+            textDocument: { uri: l.uri },
+            range,
+            context: {
+              diagnostics,
+              only: [CodeActionKind.QuickFix, CodeActionKind.Refactor, CodeActionKind.Source],
+            },
+          });
+          return r || [];
+        } catch {
+          return [];
+        }
+      }),
+    );
     return results.flat();
   }
 
-  private rangesOverlap(a: { start: { line: number; character: number }; end: { line: number; character: number } }, 
-                        b: { start: { line: number; character: number }; end: { line: number; character: number } }): boolean {
+  private rangesOverlap(
+    a: { start: { line: number; character: number }; end: { line: number; character: number } },
+    b: { start: { line: number; character: number }; end: { line: number; character: number } },
+  ): boolean {
     if (a.end.line < b.start.line || b.end.line < a.start.line) return false;
     if (a.end.line === b.start.line && a.end.character < b.start.character) return false;
     if (b.end.line === a.start.line && b.end.character < a.start.character) return false;
@@ -1354,7 +1763,10 @@ export class LSPManager {
   }
 
   async shutdown() {
-    if (this.cleanupTimer) { clearInterval(this.cleanupTimer); this.cleanupTimer = null; }
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
     const clients = Array.from(this.clients.values());
     this.clients.clear();
     for (const c of clients) {
@@ -1365,12 +1777,16 @@ export class LSPManager {
         try {
           await Promise.race([
             c.connection.sendRequest("shutdown"),
-            new Promise(r => setTimeout(r, 1000))
+            new Promise((r) => setTimeout(r, 1000)),
           ]);
         } catch {}
-        try { void c.connection.sendNotification("exit").catch(() => {}); } catch {}
+        try {
+          void c.connection.sendNotification("exit").catch(() => {});
+        } catch {}
       }
-      try { c.connection.end(); } catch {}
+      try {
+        c.connection.end();
+      } catch {}
       terminateProcess(c.process);
     }
   }
@@ -1385,15 +1801,21 @@ export function formatDiagnostic(d: Diagnostic): string {
   return `${sev} [${d.range.start.line + 1}:${d.range.start.character + 1}] ${d.message}`;
 }
 
-export function filterDiagnosticsBySeverity(diags: Diagnostic[], filter: SeverityFilter): Diagnostic[] {
+export function filterDiagnosticsBySeverity(
+  diags: Diagnostic[],
+  filter: SeverityFilter,
+): Diagnostic[] {
   if (filter === "all") return diags;
   const max = { error: 1, warning: 2, info: 3, hint: 4 }[filter];
-  return diags.filter(d => (d.severity || 1) <= max);
+  return diags.filter((d) => (d.severity || 1) <= max);
 }
 
 // URI utilities
 export function uriToPath(uri: string): string {
-  if (uri.startsWith("file://")) try { return fileURLToPath(uri); } catch {}
+  if (uri.startsWith("file://"))
+    try {
+      return fileURLToPath(uri);
+    } catch {}
   return uri;
 }
 
@@ -1407,12 +1829,17 @@ export interface WorkspaceEditApplyOptions {
  * Rename remains preview-only by default in the tool; callers must explicitly
  * opt in to this helper because LSP servers can propose edits in many files.
  */
-export function applyWorkspaceEdit(edit: WorkspaceEdit, cwd: string, options: WorkspaceEditApplyOptions = {}): number {
+export function applyWorkspaceEdit(
+  edit: WorkspaceEdit,
+  cwd: string,
+  options: WorkspaceEditApplyOptions = {},
+): number {
   const changes = new Map<string, Array<{ range: any; newText: string }>>();
   const workspaceRoot = fs.realpathSync(path.resolve(cwd));
   const add = (uri: string, edits: any[]) => {
     const filePath = uriToPath(uri);
-    if (!path.isAbsolute(filePath)) throw new Error(`WorkspaceEdit contains a non-file path: ${uri}`);
+    if (!path.isAbsolute(filePath))
+      throw new Error(`WorkspaceEdit contains a non-file path: ${uri}`);
     if (!fs.existsSync(filePath)) throw new Error(`WorkspaceEdit file not found: ${filePath}`);
 
     // Validate the canonical path as well as the lexical path so a symlink inside
@@ -1423,7 +1850,12 @@ export function applyWorkspaceEdit(edit: WorkspaceEdit, cwd: string, options: Wo
       throw new Error(`WorkspaceEdit targets a file outside the workspace: ${filePath}`);
     }
     const existing = changes.get(canonicalPath) || [];
-    existing.push(...edits.map((textEdit) => ({ range: textEdit.range, newText: String(textEdit.newText ?? "") })));
+    existing.push(
+      ...edits.map((textEdit) => ({
+        range: textEdit.range,
+        newText: String(textEdit.newText ?? ""),
+      })),
+    );
     changes.set(canonicalPath, existing);
   };
 
@@ -1438,7 +1870,12 @@ export function applyWorkspaceEdit(edit: WorkspaceEdit, cwd: string, options: Wo
   const originals = new Map<string, string>();
   const updated = new Map<string, string>();
   const offset = (content: string, position: { line: number; character: number }): number => {
-    if (!Number.isInteger(position?.line) || !Number.isInteger(position?.character) || position.line < 0 || position.character < 0) {
+    if (
+      !Number.isInteger(position?.line) ||
+      !Number.isInteger(position?.character) ||
+      position.line < 0 ||
+      position.character < 0
+    ) {
       throw new Error("WorkspaceEdit contains an invalid text range");
     }
     let index = 0;
@@ -1458,36 +1895,53 @@ export function applyWorkspaceEdit(edit: WorkspaceEdit, cwd: string, options: Wo
   for (const [filePath, fileEdits] of changes) {
     const original = fs.readFileSync(filePath, "utf8");
     originals.set(filePath, original);
-    const resolved = fileEdits.map((textEdit) => ({
-      start: offset(original, textEdit.range.start),
-      end: offset(original, textEdit.range.end),
-      newText: textEdit.newText,
-    })).sort((a, b) => b.start - a.start || b.end - a.end);
+    const resolved = fileEdits
+      .map((textEdit) => ({
+        start: offset(original, textEdit.range.start),
+        end: offset(original, textEdit.range.end),
+        newText: textEdit.newText,
+      }))
+      .sort((a, b) => b.start - a.start || b.end - a.end);
     for (let i = 0; i < resolved.length; i++) {
-      if (resolved[i].start > resolved[i].end || (i > 0 && resolved[i - 1].start < resolved[i].end)) {
+      if (
+        resolved[i].start > resolved[i].end ||
+        (i > 0 && resolved[i - 1].start < resolved[i].end)
+      ) {
         throw new Error(`WorkspaceEdit contains overlapping or invalid edits for ${filePath}`);
       }
     }
     let next = original;
-    for (const textEdit of resolved) next = next.slice(0, textEdit.start) + textEdit.newText + next.slice(textEdit.end);
+    for (const textEdit of resolved)
+      next = next.slice(0, textEdit.start) + textEdit.newText + next.slice(textEdit.end);
     updated.set(filePath, next);
     editCount += resolved.length;
   }
 
-  const writeFile = options.writeFile || ((filePath: string, content: string) => fs.writeFileSync(filePath, content, "utf8"));
+  const writeFile =
+    options.writeFile ||
+    ((filePath: string, content: string) => fs.writeFileSync(filePath, content, "utf8"));
   try {
     for (const [filePath, content] of updated) writeFile(filePath, content);
   } catch (error) {
     for (const [filePath, content] of originals) {
-      try { writeFile(filePath, content); } catch { /* best-effort rollback */ }
+      try {
+        writeFile(filePath, content);
+      } catch {
+        /* best-effort rollback */
+      }
     }
-    throw new Error(`Failed to apply WorkspaceEdit: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to apply WorkspaceEdit: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
   return editCount;
 }
 
 // Symbol search
-export function findSymbolPosition(symbols: DocumentSymbol[], query: string): { line: number; character: number } | null {
+export function findSymbolPosition(
+  symbols: DocumentSymbol[],
+  query: string,
+): { line: number; character: number } | null {
   const q = query.toLowerCase();
   let exact: { line: number; character: number } | null = null;
   let partial: { line: number; character: number } | null = null;
@@ -1507,7 +1961,11 @@ export function findSymbolPosition(symbols: DocumentSymbol[], query: string): { 
   return exact ?? partial;
 }
 
-export async function resolvePosition(manager: LSPManager, file: string, query: string): Promise<{ line: number; column: number } | null> {
+export async function resolvePosition(
+  manager: LSPManager,
+  file: string,
+  query: string,
+): Promise<{ line: number; column: number } | null> {
   const symbols = await manager.getDocumentSymbols(file);
   const pos = findSymbolPosition(symbols, query);
   return pos ? { line: pos.line + 1, column: pos.character + 1 } : null;
@@ -1521,17 +1979,24 @@ export async function resolvePosition(manager: LSPManager, file: string, query: 
  * name itself — the position that hover, definition, and references requests
  * all expect.  Falls back to `range` for servers that omit `selectionRange`.
  */
-export function collectSymbols(symbols: DocumentSymbol[], depth = 0, lines: string[] = [], query?: string): string[] {
+export function collectSymbols(
+  symbols: DocumentSymbol[],
+  depth = 0,
+  lines: string[] = [],
+  query?: string,
+): string[] {
   for (const sym of symbols) {
     const name = (sym as any)?.name ?? "<unknown>";
     if (query && !name.toLowerCase().includes(query.toLowerCase())) {
-      if ((sym as any).children?.length) collectSymbols((sym as any).children, depth + 1, lines, query);
+      if ((sym as any).children?.length)
+        collectSymbols((sym as any).children, depth + 1, lines, query);
       continue;
     }
     const startPos = sym?.selectionRange?.start ?? sym?.range?.start;
     const loc = startPos ? `${startPos.line + 1}:${startPos.character + 1}` : "";
     lines.push(`${"  ".repeat(depth)}${name}${loc ? ` (${loc})` : ""}`);
-    if ((sym as any).children?.length) collectSymbols((sym as any).children, depth + 1, lines, query);
+    if ((sym as any).children?.length)
+      collectSymbols((sym as any).children, depth + 1, lines, query);
   }
   return lines;
 }

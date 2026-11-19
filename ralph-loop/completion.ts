@@ -4,11 +4,7 @@
  * Pure functions: no pi runtime, process, or filesystem access.
  */
 
-import {
-	COMPLETION_MARKER,
-	HANDOFF_END_MARKER,
-	HANDOFF_START_MARKER,
-} from "./loop-constants.js";
+import { COMPLETION_MARKER, HANDOFF_END_MARKER, HANDOFF_START_MARKER } from "./loop-constants.js";
 
 export type HandoffMode = "none" | "summary" | "artifact";
 
@@ -38,7 +34,10 @@ export function extractRalphHandoff(text: string): string | null {
 	if (start < 0) return null;
 	const end = lines.slice(start + 1).findIndex((line) => line.trim() === HANDOFF_END_MARKER);
 	if (end < 0) return null;
-	return lines.slice(start, start + end + 2).join("\n").trim();
+	return lines
+		.slice(start, start + end + 2)
+		.join("\n")
+		.trim();
 }
 
 function getHandoffField(handoff: string, field: string): string | null {
@@ -47,7 +46,9 @@ function getHandoffField(handoff: string, field: string): string | null {
 }
 
 function isEmptyHandoffValue(value: string): boolean {
-	return /^(?:none|no(?:ne)?|nil|n\/?a|not applicable|nothing|no further action|no outstanding(?: questions?)?|no open questions?|[-—])[\s.!]*$/i.test(value.trim());
+	return /^(?:none|no(?:ne)?|nil|n\/?a|not applicable|nothing|no further action|no outstanding(?: questions?)?|no open questions?|[-—])[\s.!]*$/i.test(
+		value.trim(),
+	);
 }
 
 export function isCompletionClaimValid(text: string, handoffMode: HandoffMode): boolean {
@@ -59,7 +60,11 @@ export function isCompletionClaimValid(text: string, handoffMode: HandoffMode): 
 
 	const status = getHandoffField(handoff, "Status");
 	if (!status) return false;
-	if (/\b(in[_ -]?progress|incomplete|unfinished|partial|blocked|pending|not\s+(?:yet\s+)?(?:complete|done|finished)|belum\s+(?:selesai|tuntas|lengkap))\b/i.test(status)) {
+	if (
+		/\b(in[_ -]?progress|incomplete|unfinished|partial|blocked|pending|not\s+(?:yet\s+)?(?:complete|done|finished)|belum\s+(?:selesai|tuntas|lengkap))\b/i.test(
+			status,
+		)
+	) {
 		return false;
 	}
 	if (!/\b(?:complete|completed|done|finished|verified|resolved)\b/i.test(status)) return false;

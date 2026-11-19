@@ -1,31 +1,31 @@
 {
-  "name": "repeat-pi",
-  "version": "1.0.5",
-  "description": "Repeat tool calls in pi-coding-agent",
-  "type": "module",
-  "keywords": [
-    "pi",
-    "pi-coding-agent",
-    "repeat",
-    "pi-package"
-  ],
-  "license": "MIT",
-  "scripts": {
-    "typecheck": "tsc -p tsconfig.json",
-    "test": "npx tsx tests/repeat.test.ts"
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.74.0",
-    "@earendil-works/pi-tui": "^0.74.0"
-  },
-  "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.74.0",
-    "typescript": "^5.9.3",
-    "@earendil-works/pi-tui": "^0.74.0"
-  },
-  "pi": {
-    "extensions": [
-      "./repeat.ts"
-    ]
-  }
+	"name": "repeat-pi",
+	"version": "1.0.5",
+	"description": "Repeat tool calls in pi-coding-agent",
+	"type": "module",
+	"keywords": [
+		"pi",
+		"pi-coding-agent",
+		"repeat",
+		"pi-package"
+	],
+	"license": "MIT",
+	"scripts": {
+		"typecheck": "tsc -p tsconfig.json",
+		"test": "npx tsx tests/repeat.test.ts"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "^0.74.0",
+		"@earendil-works/pi-tui": "^0.74.0"
+	},
+	"devDependencies": {
+		"@earendil-works/pi-coding-agent": "^0.74.0",
+		"typescript": "^5.9.3",
+		"@earendil-works/pi-tui": "^0.74.0"
+	},
+	"pi": {
+		"extensions": [
+			"./repeat.ts"
+		]
+	}
 }

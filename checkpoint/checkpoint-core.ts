@@ -142,8 +142,12 @@ function runGit(args: string[], cwd: string, opts: GitOptions = {}): Promise<str
 
     let stdout = "";
     let stderr = "";
-    proc.stdout?.on("data", (data: Buffer) => { stdout += data.toString(); });
-    proc.stderr?.on("data", (data: Buffer) => { stderr += data.toString(); });
+    proc.stdout?.on("data", (data: Buffer) => {
+      stdout += data.toString();
+    });
+    proc.stderr?.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
     proc.on("close", (code: number | null) => {
       if (code === 0) resolve(opts.trimOutput === false ? stdout : stdout.trim());
       else reject(new Error(stderr.trim() || `git ${args.join(" ")} failed with code ${code}`));
@@ -182,8 +186,12 @@ export function gitLowPriorityArgs(args: string[], cwd: string): Promise<string>
     }
     let stdout = "";
     let stderr = "";
-    proc.stdout?.on("data", (data: Buffer) => { stdout += data.toString(); });
-    proc.stderr?.on("data", (data: Buffer) => { stderr += data.toString(); });
+    proc.stdout?.on("data", (data: Buffer) => {
+      stdout += data.toString();
+    });
+    proc.stderr?.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
     proc.on("close", (code: number | null) => {
       if (code === 0) resolve(stdout.trim());
       else reject(new Error(stderr.trim() || `git ${args.join(" ")} failed with code ${code}`));
@@ -201,8 +209,7 @@ export const isGitRepo = (cwd: string) =>
     .then(() => true)
     .catch(() => false);
 
-export const getRepoRoot = (cwd: string) =>
-  git("rev-parse --show-toplevel", cwd);
+export const getRepoRoot = (cwd: string) => git("rev-parse --show-toplevel", cwd);
 
 // ============================================================================
 // Path filtering
@@ -320,10 +327,7 @@ function isPathWithinAnyDir(path: string, dirs: Set<string>): boolean {
   return false;
 }
 
-function extractStatusPathAfterFields(
-  record: string,
-  fieldsBeforePath: number
-): string | null {
+function extractStatusPathAfterFields(record: string, fieldsBeforePath: number): string | null {
   if (fieldsBeforePath <= 0) return null;
   let spaces = 0;
   for (let i = 0; i < record.length; i++) {
@@ -346,7 +350,7 @@ interface LargeUntrackedDir {
 function detectLargeUntrackedDirs(
   files: string[],
   dirs: string[],
-  threshold: number
+  threshold: number,
 ): LargeUntrackedDir[] {
   if (threshold <= 0 || files.length === 0) return [];
 
@@ -389,13 +393,13 @@ function detectLargeUntrackedDirs(
  * Note: This always uses the real git index to determine untracked status.
  * @param root - Repository root path
  */
-async function getUntrackedFiles(
-  root: string
-): Promise<string[]> {
+async function getUntrackedFiles(root: string): Promise<string[]> {
   try {
     // Get untracked files (respects .gitignore)
     // Don't pass custom env - we want to use the real index
-    const output = await gitArgs(["ls-files", "--others", "--exclude-standard", "-z"], root, { trimOutput: false });
+    const output = await gitArgs(["ls-files", "--others", "--exclude-standard", "-z"], root, {
+      trimOutput: false,
+    });
     if (!output) return [];
     return output.split("\0").filter(Boolean);
   } catch {
@@ -422,10 +426,7 @@ async function captureStatusSnapshot(root: string): Promise<StatusSnapshot> {
     skippedLargeFiles: [],
   };
 
-  const output = await git(
-    "status --porcelain=2 -z --untracked-files=all",
-    root
-  ).catch(() => "");
+  const output = await git("status --porcelain=2 -z --untracked-files=all", root).catch(() => "");
 
   if (!output) return snapshot;
 
@@ -468,9 +469,7 @@ async function captureStatusSnapshot(root: string): Promise<StatusSnapshot> {
         snapshot.untrackedFiles.push(normalized);
         snapshot.untrackedFilesForDirScan.push(normalized);
 
-        const isLarge = stats?.isFile()
-          ? stats.size > MAX_UNTRACKED_FILE_SIZE
-          : false;
+        const isLarge = stats?.isFile() ? stats.size > MAX_UNTRACKED_FILE_SIZE : false;
         if (isLarge) {
           snapshot.skippedLargeFiles.push(normalized);
         } else {
@@ -523,26 +522,24 @@ interface FilesToAddResult {
  * that query the index state.
  * @param root - Repository root path
  */
-async function getFilesToAdd(
-  root: string
-): Promise<FilesToAddResult> {
+async function getFilesToAdd(root: string): Promise<FilesToAddResult> {
   const status = await captureStatusSnapshot(root);
 
   const largeDirEntries = detectLargeUntrackedDirs(
     status.untrackedFilesForDirScan,
     status.untrackedDirs,
-    MAX_UNTRACKED_DIR_FILES
+    MAX_UNTRACKED_DIR_FILES,
   );
 
   const skippedLargeDirs = largeDirEntries.map((entry) => entry.path);
   const skippedLargeDirsSet = new Set(skippedLargeDirs);
 
   const untrackedFilesForIndex = status.untrackedFilesForIndex.filter(
-    (path) => !isPathWithinAnyDir(path, skippedLargeDirsSet)
+    (path) => !isPathWithinAnyDir(path, skippedLargeDirsSet),
   );
 
   const skippedLargeFiles = status.skippedLargeFiles.filter(
-    (path) => !isPathWithinAnyDir(path, skippedLargeDirsSet)
+    (path) => !isPathWithinAnyDir(path, skippedLargeDirsSet),
   );
 
   const filesToAddSet = new Set<string>();
@@ -565,7 +562,7 @@ export async function createCheckpoint(
   root: string,
   id: string,
   turnIndex: number,
-  sessionId: string
+  sessionId: string,
 ): Promise<CheckpointData> {
   if (!isSafeId(id)) throw new Error("Checkpoint id contains unsafe characters");
 
@@ -583,9 +580,12 @@ export async function createCheckpoint(
 
     // Get files to add, filtering out ignored directories, large files, and large directories
     // Note: getFilesToAdd uses the real git index to determine tracked/untracked status
-    const { filtered: filesToAdd, allUntracked, skippedLargeFiles, skippedLargeDirs } = await getFilesToAdd(
-      root
-    );
+    const {
+      filtered: filesToAdd,
+      allUntracked,
+      skippedLargeFiles,
+      skippedLargeDirs,
+    } = await getFilesToAdd(root);
 
     // Filter untracked files to only include non-ignored, non-large ones for restore tracking
     const skippedLargeDirsSet = new Set(skippedLargeDirs);
@@ -667,10 +667,7 @@ export async function createCheckpoint(
   }
 }
 
-export async function restoreCheckpoint(
-  root: string,
-  cp: CheckpointData
-): Promise<void> {
+export async function restoreCheckpoint(root: string, cp: CheckpointData): Promise<void> {
   const objectIds = [cp.headSha, cp.indexTreeSha, cp.worktreeTreeSha];
   if (objectIds.some((sha) => !/^[0-9a-f]{40}$/i.test(sha))) {
     throw new Error("Checkpoint contains an invalid Git object id");
@@ -690,7 +687,7 @@ export async function restoreCheckpoint(
     root,
     cp.preexistingUntrackedFiles || [],
     cp.skippedLargeFiles || [],
-    cp.skippedLargeDirs || []
+    cp.skippedLargeDirs || [],
   );
 
   // 4. Restore the index (staged state) without touching files
@@ -711,7 +708,7 @@ async function safeCleanUntrackedFiles(
   root: string,
   preexistingFiles: string[],
   skippedLargeFiles: string[] = [],
-  skippedLargeDirs: string[] = []
+  skippedLargeDirs: string[] = [],
 ): Promise<void> {
   // Get current untracked files
   const currentUntracked = await getUntrackedFiles(root);
@@ -756,7 +753,7 @@ async function safeCleanUntrackedFiles(
 export async function loadCheckpointFromRef(
   root: string,
   refName: string,
-  lowPriority = false
+  lowPriority = false,
 ): Promise<CheckpointData | null> {
   try {
     if (!isSafeId(refName)) return null;
@@ -765,8 +762,7 @@ export async function loadCheckpointFromRef(
     if (!/^[0-9a-f]{40}$/i.test(commitSha)) return null;
     const commitMsg = await gitFn(["cat-file", "commit", commitSha], root);
 
-    const get = (key: string) =>
-      commitMsg.match(new RegExp(`^${key} (.+)$`, "m"))?.[1]?.trim();
+    const get = (key: string) => commitMsg.match(new RegExp(`^${key} (.+)$`, "m"))?.[1]?.trim();
 
     const sessionId = get("sessionId");
     const turn = get("turn");
@@ -819,17 +815,11 @@ export async function loadCheckpointFromRef(
   }
 }
 
-export async function listCheckpointRefs(
-  root: string,
-  lowPriority = false
-): Promise<string[]> {
+export async function listCheckpointRefs(root: string, lowPriority = false): Promise<string[]> {
   try {
     const prefix = `${REF_BASE}/`;
     const gitFn = lowPriority ? gitLowPriorityArgs : gitArgs;
-    const stdout = await gitFn(
-      ["for-each-ref", "--format=%(refname)", prefix],
-      root
-    );
+    const stdout = await gitFn(["for-each-ref", "--format=%(refname)", prefix], root);
     return stdout
       .split("\n")
       .filter(Boolean)
@@ -842,7 +832,7 @@ export async function listCheckpointRefs(
 export async function loadAllCheckpoints(
   root: string,
   sessionFilter?: string,
-  lowPriority = false
+  lowPriority = false,
 ): Promise<CheckpointData[]> {
   const refs = await listCheckpointRefs(root, lowPriority);
 
@@ -852,25 +842,22 @@ export async function loadAllCheckpoints(
     for (let i = 0; i < refs.length; i += BATCH_SIZE) {
       const batch = refs.slice(i, i + BATCH_SIZE);
       const batchResults = await Promise.all(
-        batch.map((ref) => loadCheckpointFromRef(root, ref, true))
+        batch.map((ref) => loadCheckpointFromRef(root, ref, true)),
       );
       results.push(
         ...batchResults.filter(
           (cp): cp is CheckpointData =>
-            cp !== null && (!sessionFilter || cp.sessionId === sessionFilter)
-        )
+            cp !== null && (!sessionFilter || cp.sessionId === sessionFilter),
+        ),
       );
       await new Promise((resolve) => setImmediate(resolve));
     }
     return results;
   }
 
-  const results = await Promise.all(
-    refs.map((ref) => loadCheckpointFromRef(root, ref))
-  );
+  const results = await Promise.all(refs.map((ref) => loadCheckpointFromRef(root, ref)));
   return results.filter(
-    (cp): cp is CheckpointData =>
-      cp !== null && (!sessionFilter || cp.sessionId === sessionFilter)
+    (cp): cp is CheckpointData => cp !== null && (!sessionFilter || cp.sessionId === sessionFilter),
   );
 }
 
@@ -884,7 +871,7 @@ export const isSafeId = (id: string) => /^[\w-]+$/.test(id);
 /** Find the closest checkpoint to a target timestamp */
 export function findClosestCheckpoint(
   checkpoints: CheckpointData[],
-  targetTs: number
+  targetTs: number,
 ): CheckpointData {
   return checkpoints.reduce((best, cp) => {
     const bestDiff = Math.abs(best.timestamp - targetTs);

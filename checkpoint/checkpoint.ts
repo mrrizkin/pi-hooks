@@ -39,22 +39,26 @@ type ExtensionAPI = {
 interface SessionManager {
   getSessionFile(): string | undefined;
   getHeader(): { id?: string; parentSession?: string } | undefined;
-  getEntry(id: string): {
-    timestamp?: string;
-    turnIndex?: number;
-    turn?: number;
-    sessionId?: string;
-    role?: string;
-    type?: string;
-    kind?: string;
-    author?: string;
-    message?: { role?: string };
-  } | undefined;
+  getEntry(id: string):
+    | {
+        timestamp?: string;
+        turnIndex?: number;
+        turn?: number;
+        sessionId?: string;
+        role?: string;
+        type?: string;
+        kind?: string;
+        author?: string;
+        message?: { role?: string };
+      }
+    | undefined;
 }
 
 interface ExtensionUI {
   select(title: string, options: string[]): Promise<string>;
-  custom?<T>(factory: (tui: any, theme: any, keybindings: any, done: (result: T) => void) => any): Promise<T>;
+  custom?<T>(
+    factory: (tui: any, theme: any, keybindings: any, done: (result: T) => void) => any,
+  ): Promise<T>;
   notify(message: string, type: "info" | "error" | "warning"): void;
 }
 
@@ -96,7 +100,6 @@ function addToCache(state: CheckpointState, cp: CheckpointData): void {
   if (state.checkpointCache.some((existing) => existing.id === cp.id)) return;
   state.checkpointCache.push(cp);
 }
-
 
 // Repo root cache (module-level for efficiency across sessions)
 let cachedRepoRoot: string | null = null;
@@ -143,10 +146,7 @@ interface CheckpointRefInfo {
   timestamp: number;
 }
 
-function getCachedCheckpointById(
-  state: CheckpointState,
-  id: string
-): CheckpointData | undefined {
+function getCachedCheckpointById(state: CheckpointState, id: string): CheckpointData | undefined {
   return state.checkpointCache?.find((cp) => cp.id === id);
 }
 
@@ -160,7 +160,7 @@ function parseCheckpointTimestampFromId(id: string): number | undefined {
 
 function findClosestCheckpointRef(
   refs: CheckpointRefInfo[],
-  targetTs: number
+  targetTs: number,
 ): CheckpointRefInfo | undefined {
   if (refs.length === 0) return undefined;
   return refs.reduce((best, ref) => {
@@ -221,7 +221,7 @@ async function loadCheckpointForTarget(
   cwd: string,
   header: { id?: string; parentSession?: string } | undefined,
   targetTs: number,
-  options: { targetTurnIndex?: number; targetSessionId?: string } = {}
+  options: { targetTurnIndex?: number; targetSessionId?: string } = {},
 ): Promise<CheckpointData | null> {
   if (state.pendingCheckpoint) await state.pendingCheckpoint;
 
@@ -323,7 +323,7 @@ async function saveAndRestore(
   state: CheckpointState,
   cwd: string,
   target: CheckpointData,
-  notify: (msg: string, type: "info" | "error" | "warning") => void
+  notify: (msg: string, type: "info" | "error" | "warning") => void,
 ): Promise<void> {
   try {
     const root = await getCachedRepoRoot(cwd);
@@ -333,10 +333,7 @@ async function saveAndRestore(
     await restoreCheckpoint(root, target);
     notify("Files restored to checkpoint", "info");
   } catch (error) {
-    notify(
-      `Restore failed: ${error instanceof Error ? error.message : String(error)}`,
-      "error"
-    );
+    notify(`Restore failed: ${error instanceof Error ? error.message : String(error)}`, "error");
   }
 }
 
@@ -345,7 +342,7 @@ async function createTurnCheckpoint(
   state: CheckpointState,
   cwd: string,
   turnIndex: number,
-  timestamp: number
+  timestamp: number,
 ): Promise<void> {
   const root = await getCachedRepoRoot(cwd);
   const id = `${state.currentSessionId}-turn-${turnIndex}-${timestamp}`;
@@ -371,7 +368,7 @@ async function handleRestorePrompt(
   state: CheckpointState,
   ctx: ExtensionContext,
   getTargetEntryId: () => string,
-  options: { codeOnly: "cancel" | "skipConversationRestore"; requireUserEntry?: boolean }
+  options: { codeOnly: "cancel" | "skipConversationRestore"; requireUserEntry?: boolean },
 ): Promise<{ cancel: true } | { skipConversationRestore: true } | undefined> {
   const targetEntry = ctx.sessionManager.getEntry(getTargetEntryId());
 
@@ -380,20 +377,18 @@ async function handleRestorePrompt(
     if (isUser !== true) {
       ctx.ui.notify(
         "Code restore is only available for user messages. Skipping code restore.",
-        "warning"
+        "warning",
       );
       return undefined;
     }
   }
 
-  const targetTs = targetEntry?.timestamp
-    ? new Date(targetEntry.timestamp).getTime()
-    : Date.now();
+  const targetTs = targetEntry?.timestamp ? new Date(targetEntry.timestamp).getTime() : Date.now();
 
   const choice = await numberedSelect(
     ctx,
     "Restore code state?",
-    restoreOptions.map((o) => o.label)
+    restoreOptions.map((o) => o.label),
   );
 
   const selected = restoreOptions.find((o) => o.label === choice)?.value ?? "cancel";
@@ -417,7 +412,7 @@ async function handleRestorePrompt(
     {
       targetTurnIndex: exactTurnIndex,
       targetSessionId,
-    }
+    },
   );
 
   if (!checkpoint) {
@@ -448,7 +443,6 @@ export default function (pi: ExtensionAPI) {
     if (!state.gitAvailable) return;
 
     updateSessionInfo(state, ctx.sessionManager);
-
   });
 
   pi.on("session_switch", async (_event: any, ctx: ExtensionContext) => {

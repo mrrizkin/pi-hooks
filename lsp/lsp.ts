@@ -25,7 +25,10 @@ type HookMode = "edit_write" | "agent_end" | "disabled";
 
 const DIAGNOSTICS_PREVIEW_LINES = 10;
 const LSP_IDLE_SHUTDOWN_MS = 2 * 60 * 1000;
-const DIM = "\x1b[2m", GREEN = "\x1b[32m", YELLOW = "\x1b[33m", RESET = "\x1b[0m";
+const DIM = "\x1b[2m",
+  GREEN = "\x1b[32m",
+  YELLOW = "\x1b[33m",
+  RESET = "\x1b[0m";
 const DEFAULT_HOOK_MODE: HookMode = "agent_end";
 const SETTINGS_NAMESPACE = "lsp";
 const LSP_CONFIG_ENTRY = "lsp-hook-config";
@@ -41,10 +44,10 @@ const WARMUP_MAP: Record<string, string> = {
   "build.gradle": ".kt",
   "build.gradle.kts": ".kt",
   "pom.xml": ".kt",
-  "gradlew": ".kt",
+  gradlew: ".kt",
   "gradle.properties": ".kt",
   "Package.swift": ".swift",
-  "Gemfile": ".rb",
+  Gemfile: ".rb",
   "Gemfile.lock": ".rb",
   ".ruby-version": ".rb",
   "compile_commands.json": ".cpp",
@@ -89,7 +92,7 @@ export default function (pi: ExtensionAPI) {
       if (!fs.existsSync(filePath)) return {};
       const raw = fs.readFileSync(filePath, "utf-8");
       const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
     } catch {
       return {};
     }
@@ -98,7 +101,8 @@ export default function (pi: ExtensionAPI) {
   function getGlobalHookMode(): HookMode | undefined {
     const settings = readSettingsFile(globalSettingsPath);
     const lspSettings = settings[SETTINGS_NAMESPACE];
-    const hookValue = (lspSettings as { hookMode?: unknown; hookEnabled?: unknown } | undefined)?.hookMode;
+    const hookValue = (lspSettings as { hookMode?: unknown; hookEnabled?: unknown } | undefined)
+      ?.hookMode;
     const normalized = normalizeHookMode(hookValue);
     if (normalized) return normalized;
 
@@ -111,9 +115,10 @@ export default function (pi: ExtensionAPI) {
     try {
       const settings = readSettingsFile(globalSettingsPath);
       const existing = settings[SETTINGS_NAMESPACE];
-      const nextNamespace = (existing && typeof existing === "object")
-        ? { ...(existing as Record<string, unknown>), hookMode: mode }
-        : { hookMode: mode };
+      const nextNamespace =
+        existing && typeof existing === "object"
+          ? { ...(existing as Record<string, unknown>), hookMode: mode }
+          : { hookMode: mode };
 
       settings[SETTINGS_NAMESPACE] = nextNamespace;
       fs.mkdirSync(path.dirname(globalSettingsPath), { recursive: true });
@@ -172,9 +177,11 @@ export default function (pi: ExtensionAPI) {
     if (typeof content === "string") return content;
     if (Array.isArray(content)) {
       return content
-        .map((item) => (item && typeof item === "object" && "type" in item && (item as any).type === "text")
-          ? String((item as any).text ?? "")
-          : "")
+        .map((item) =>
+          item && typeof item === "object" && "type" in item && (item as any).type === "text"
+            ? String((item as any).text ?? "")
+            : "",
+        )
         .filter(Boolean)
         .join("\n");
     }
@@ -336,7 +343,10 @@ export default function (pi: ExtensionAPI) {
     if (!absPath) return undefined;
 
     try {
-      const result = await manager.touchFileAndWait(absPath, manager.diagnosticsWaitMsForFile(absPath));
+      const result = await manager.touchFileAndWait(
+        absPath,
+        manager.diagnosticsWaitMsForFile(absPath),
+      );
       if (!result.receivedResponse) return undefined;
 
       const diagnostics = includeWarnings
@@ -347,7 +357,8 @@ export default function (pi: ExtensionAPI) {
       const report = buildDiagnosticsOutput(filePath, diagnostics, ctx.cwd, includeFileHeader);
 
       if (notify) {
-        if (ctx.hasUI) ctx.ui.notify(report.notification, report.errorCount > 0 ? "error" : "warning");
+        if (ctx.hasUI)
+          ctx.ui.notify(report.notification, report.errorCount > 0 ? "error" : "warning");
         else console.error(report.notification);
       }
 
@@ -366,11 +377,7 @@ export default function (pi: ExtensionAPI) {
       }
 
       const currentMark = " ✓";
-      const modeOptions = ([
-        "edit_write",
-        "agent_end",
-        "disabled",
-      ] as HookMode[]).map((mode) => ({
+      const modeOptions = (["edit_write", "agent_end", "disabled"] as HookMode[]).map((mode) => ({
         mode,
         label: mode === hookMode ? `${labelForMode(mode)}${currentMark}` : labelForMode(mode),
       }));
@@ -434,17 +441,20 @@ export default function (pi: ExtensionAPI) {
     for (const warning of configWarnings.slice(0, 5)) {
       const server = warning.server ? ` [${warning.server}]` : "";
       const message = `LSP config${server}: ${warning.message}`;
-      if (ctx.hasUI) ctx.ui.notify(message, "warning"); else console.error(message);
+      if (ctx.hasUI) ctx.ui.notify(message, "warning");
+      else console.error(message);
     }
     if (configWarnings.length > 5) {
       const message = `LSP config: ${configWarnings.length - 5} more warning(s)`;
-      if (ctx.hasUI) ctx.ui.notify(message, "warning"); else console.error(message);
+      if (ctx.hasUI) ctx.ui.notify(message, "warning");
+      else console.error(message);
     }
 
     for (const [marker, ext] of Object.entries(WARMUP_MAP)) {
       if (fs.existsSync(path.join(ctx.cwd, marker))) {
         setActivity("loading");
-        manager.getClientsForFile(path.join(ctx.cwd, `dummy${ext}`))
+        manager
+          .getClientsForFile(path.join(ctx.cwd, `dummy${ext}`))
           .then((clients) => {
             if (clients.length > 0) {
               for (const cfg of manager.getServersForFile(`dummy${ext}`)) activeClients.add(cfg.id);
@@ -485,9 +495,10 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("tool_call", async (event, ctx) => {
-    const input = (event.input && typeof event.input === "object")
-      ? event.input as Record<string, unknown>
-      : {};
+    const input =
+      event.input && typeof event.input === "object"
+        ? (event.input as Record<string, unknown>)
+        : {};
 
     if (event.toolName === "lsp") {
       clearIdleShutdownTimer();
@@ -498,7 +509,8 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    if (event.toolName !== "read" && event.toolName !== "write" && event.toolName !== "edit") return;
+    if (event.toolName !== "read" && event.toolName !== "write" && event.toolName !== "edit")
+      return;
 
     clearIdleShutdownTimer();
     const filePath = typeof input.path === "string" ? input.path : undefined;
@@ -507,7 +519,9 @@ export default function (pi: ExtensionAPI) {
     const absPath = ensureActiveClientForFile(filePath, ctx.cwd);
     if (!absPath) return;
 
-    void getOrCreateManager(ctx.cwd).getClientsForFile(absPath).catch(() => {});
+    void getOrCreateManager(ctx.cwd)
+      .getClientsForFile(absPath)
+      .catch(() => {});
   });
 
   pi.on("agent_start", async () => {
@@ -520,11 +534,12 @@ export default function (pi: ExtensionAPI) {
 
   function agentWasAborted(event: any): boolean {
     const messages = Array.isArray(event?.messages) ? event.messages : [];
-    return messages.some((m: any) =>
-      m &&
-      typeof m === "object" &&
-      (m as any).role === "assistant" &&
-      (((m as any).stopReason === "aborted") || ((m as any).stopReason === "error"))
+    return messages.some(
+      (m: any) =>
+        m &&
+        typeof m === "object" &&
+        (m as any).role === "assistant" &&
+        ((m as any).stopReason === "aborted" || (m as any).stopReason === "error"),
     );
   }
 
@@ -566,14 +581,17 @@ export default function (pi: ExtensionAPI) {
         if (shuttingDown || abort.signal.aborted) return;
 
         if (outputs.length) {
-          pi.sendMessage({
-            customType: "lsp-diagnostics",
-            content: outputs.join("\n"),
-            display: true,
-          }, {
-            triggerTurn: true,
-            deliverAs: "followUp",
-          });
+          pi.sendMessage(
+            {
+              customType: "lsp-diagnostics",
+              content: outputs.join("\n"),
+              display: true,
+            },
+            {
+              triggerTurn: true,
+              deliverAs: "followUp",
+            },
+          );
         }
       } finally {
         if (diagnosticsAbort === abort) diagnosticsAbort = null;
@@ -606,6 +624,11 @@ export default function (pi: ExtensionAPI) {
     const output = await collectDiagnostics(absPath, ctx, includeWarnings, false);
     if (!output) return;
 
-    return { content: [...event.content, { type: "text" as const, text: output }] as Array<{ type: "text"; text: string }> };
+    return {
+      content: [...event.content, { type: "text" as const, text: output }] as Array<{
+        type: "text";
+        text: string;
+      }>,
+    };
   });
 }

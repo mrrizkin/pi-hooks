@@ -1,37 +1,37 @@
 {
-  "name": "ralph-loop-pi",
-  "version": "1.0.5",
-  "description": "Ralph loop extension for pi-coding-agent - looped subagent execution",
-  "type": "module",
-  "keywords": [
-    "ralph-loop",
-    "subagent",
-    "loop",
-    "pi-coding-agent",
-    "extension",
-    "pi-package"
-  ],
-  "author": "",
-  "license": "MIT",
-  "scripts": {
-    "typecheck": "tsc -p tsconfig.json",
-    "test": "npx tsx tests/ralph-loop.test.ts"
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-agent-core": "^0.74.0",
-    "@earendil-works/pi-ai": "^0.74.0",
-    "@earendil-works/pi-coding-agent": "^0.74.0",
-    "@earendil-works/pi-tui": "^0.74.0"
-  },
-  "devDependencies": {
-    "@earendil-works/pi-agent-core": "^0.74.0",
-    "@earendil-works/pi-ai": "^0.74.0",
-    "@earendil-works/pi-coding-agent": "^0.74.0",
-    "@earendil-works/pi-tui": "^0.74.0"
-  },
-  "pi": {
-    "extensions": [
-      "./ralph-loop.ts"
-    ]
-  }
+	"name": "ralph-loop-pi",
+	"version": "1.0.5",
+	"description": "Ralph loop extension for pi-coding-agent - looped subagent execution",
+	"type": "module",
+	"keywords": [
+		"ralph-loop",
+		"subagent",
+		"loop",
+		"pi-coding-agent",
+		"extension",
+		"pi-package"
+	],
+	"author": "",
+	"license": "MIT",
+	"scripts": {
+		"typecheck": "tsc -p tsconfig.json",
+		"test": "npx tsx tests/ralph-loop.test.ts"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-agent-core": "^0.74.0",
+		"@earendil-works/pi-ai": "^0.74.0",
+		"@earendil-works/pi-coding-agent": "^0.74.0",
+		"@earendil-works/pi-tui": "^0.74.0"
+	},
+	"devDependencies": {
+		"@earendil-works/pi-agent-core": "^0.74.0",
+		"@earendil-works/pi-ai": "^0.74.0",
+		"@earendil-works/pi-coding-agent": "^0.74.0",
+		"@earendil-works/pi-tui": "^0.74.0"
+	},
+	"pi": {
+		"extensions": [
+			"./ralph-loop.ts"
+		]
+	}
 }

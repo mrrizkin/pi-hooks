@@ -398,7 +398,7 @@ test("high: git irreversible operations", async () => {
   assertLevel("git clean -fd", "high"); // deletes untracked files
   assertLevel("git clean -n", "high"); // even dry-run is high (encourages dangerous use)
   assertLevel("git restore file.ts", "high"); // discards uncommitted changes
-  // git checkout with -- is for switching branches/commits (medium), 
+  // git checkout with -- is for switching branches/commits (medium),
   // git checkout -- <file> discards changes but checkout itself is medium
   assertLevel("git checkout -- file.ts", "medium");
 });
@@ -602,10 +602,7 @@ test("pipelines: safe pipelines stay at lowest level", async () => {
   assertLevel("ps aux | grep node", "minimal");
   assertLevel("git log | head", "minimal");
   // Similar to: cd <dir> && rg ... | head (should remain read-only)
-  assertLevel(
-    "cd /tmp/project && rg -n \"foo|bar|baz\" -S . | head -n 50",
-    "minimal"
-  );
+  assertLevel('cd /tmp/project && rg -n "foo|bar|baz" -S . | head -n 50', "minimal");
 });
 
 test("pipelines: piping to shell requires high", async () => {
@@ -858,13 +855,13 @@ test("edge: xargs with flags and read-only commands (minimal)", async () => {
   assertLevel("xargs -n 1 cat", "minimal");
   assertLevel("xargs -P 4 cat", "minimal");
   assertLevel("xargs -I {} cat {}", "minimal");
-  assertLevel("xargs -I{} cat {}", "minimal");  // attached argument
+  assertLevel("xargs -I{} cat {}", "minimal"); // attached argument
   assertLevel("xargs -d '\\n' cat", "minimal");
   assertLevel("xargs --null cat", "minimal");
-  assertLevel("xargs -0 -n 1 -P 4 cat", "minimal");  // multiple flags
-  assertLevel("xargs -- cat", "minimal");  // explicit end of options
-  assertLevel("xargs -t cat", "minimal");  // verbose mode
-  assertLevel("xargs -p cat", "minimal");  // interactive mode (still read-only)
+  assertLevel("xargs -0 -n 1 -P 4 cat", "minimal"); // multiple flags
+  assertLevel("xargs -- cat", "minimal"); // explicit end of options
+  assertLevel("xargs -t cat", "minimal"); // verbose mode
+  assertLevel("xargs -p cat", "minimal"); // interactive mode (still read-only)
 });
 
 test("edge: xargs with full paths to read-only commands (minimal)", async () => {
@@ -895,16 +892,16 @@ test("edge: xargs with redirections", async () => {
   assertLevel("xargs cat >> append.txt", "low");
   assertLevel("find . | xargs cat > all.txt", "low");
   assertLevel("xargs -I {} cat {} > {}.bak", "low");
-  
+
   // Stderr to /dev/null is safe (no actual file write)
   assertLevel("xargs cat 2>/dev/null", "minimal");
   assertLevel("find . | xargs cat 2>/dev/null", "minimal");
-  
+
   // Pipe to another command is safe (no file write)
   assertLevel("xargs cat | head -10", "minimal");
   assertLevel("xargs cat | grep pattern", "minimal");
   assertLevel("find . | xargs cat | wc -l", "minimal");
-  
+
   // Redirect to /dev/null is safe
   assertLevel("xargs cat > /dev/null", "minimal");
 });
@@ -913,12 +910,12 @@ test("edge: cat with redirections (not xargs)", async () => {
   // Ensure cat itself is correctly classified with redirections
   assertLevel("cat file.txt", "minimal");
   assertLevel("cat file1 file2", "minimal");
-  assertLevel("cat file1 > file2", "low");  // write via redirection
-  assertLevel("cat file >> append.txt", "low");  // append via redirection
-  assertLevel("cat < input.txt", "minimal");  // input redirection is read-only
-  assertLevel("cat file 2>/dev/null", "minimal");  // stderr to /dev/null is safe
-  assertLevel("cat file > /dev/null", "minimal");  // /dev/null is safe
-  assertLevel("cat file | grep pattern", "minimal");  // pipe is read-only
+  assertLevel("cat file1 > file2", "low"); // write via redirection
+  assertLevel("cat file >> append.txt", "low"); // append via redirection
+  assertLevel("cat < input.txt", "minimal"); // input redirection is read-only
+  assertLevel("cat file 2>/dev/null", "minimal"); // stderr to /dev/null is safe
+  assertLevel("cat file > /dev/null", "minimal"); // /dev/null is safe
+  assertLevel("cat file | grep pattern", "minimal"); // pipe is read-only
 });
 
 test("edge: tee command (writes files)", async () => {
@@ -1037,7 +1034,7 @@ test("happy: typical development workflow", async () => {
   assertLevel("git clone https://github.com/user/repo", "medium");
   assertLevel("cd repo", "minimal");
   assertLevel("npm install", "medium");
-  
+
   // Development - run dev is high (runs server)
   assertLevel("npm run dev", "high");
   assertLevel("npm run build", "medium");
@@ -1108,8 +1105,8 @@ test("happy: Go development", async () => {
 test("override: custom minimal patterns", async () => {
   const config: PermissionConfig = {
     overrides: {
-      minimal: ["tmux list-*", "tmux show-*"]
-    }
+      minimal: ["tmux list-*", "tmux show-*"],
+    },
   };
 
   const result1 = classifyCommand("tmux list-sessions", config);
@@ -1126,8 +1123,8 @@ test("override: custom minimal patterns", async () => {
 test("override: custom medium patterns", async () => {
   const config: PermissionConfig = {
     overrides: {
-      medium: ["tmux *"]
-    }
+      medium: ["tmux *"],
+    },
   };
 
   const result = classifyCommand("tmux new-session -s test", config);
@@ -1137,8 +1134,8 @@ test("override: custom medium patterns", async () => {
 test("override: custom high patterns", async () => {
   const config: PermissionConfig = {
     overrides: {
-      high: ["rm -rf *"]
-    }
+      high: ["rm -rf *"],
+    },
   };
 
   const result = classifyCommand("rm -rf /tmp/test", config);
@@ -1148,8 +1145,8 @@ test("override: custom high patterns", async () => {
 test("override: dangerous patterns", async () => {
   const config: PermissionConfig = {
     overrides: {
-      dangerous: ["dd if=* of=/dev/*"]
-    }
+      dangerous: ["dd if=* of=/dev/*"],
+    },
   };
 
   const result = classifyCommand("dd if=/dev/zero of=/dev/sda", config);
@@ -1160,8 +1157,8 @@ test("override: priority order", async () => {
   const config: PermissionConfig = {
     overrides: {
       minimal: ["cmd *"],
-      high: ["cmd dangerous*"]
-    }
+      high: ["cmd dangerous*"],
+    },
   };
 
   // high should override minimal for matching pattern
@@ -1178,9 +1175,7 @@ test("override: priority order", async () => {
 
 test("prefix: fvm flutter normalization", async () => {
   const config: PermissionConfig = {
-    prefixMappings: [
-      { from: "fvm flutter", to: "flutter" }
-    ]
+    prefixMappings: [{ from: "fvm flutter", to: "flutter" }],
   };
 
   // fvm flutter build → flutter build → medium
@@ -1205,8 +1200,8 @@ test("prefix: multiple prefix mappings", async () => {
     prefixMappings: [
       { from: "fvm flutter", to: "flutter" },
       { from: "nvm exec node", to: "node" },
-      { from: "rbenv exec ruby", to: "ruby" }
-    ]
+      { from: "rbenv exec ruby", to: "ruby" },
+    ],
   };
 
   // nvm exec node script.js → node script.js → high
@@ -1220,9 +1215,7 @@ test("prefix: multiple prefix mappings", async () => {
 
 test("prefix: empty mapping (strip prefix)", async () => {
   const config: PermissionConfig = {
-    prefixMappings: [
-      { from: "rbenv exec", to: "" }
-    ]
+    prefixMappings: [{ from: "rbenv exec", to: "" }],
   };
 
   // rbenv exec ruby script.rb → ruby script.rb → high
@@ -1233,11 +1226,9 @@ test("prefix: empty mapping (strip prefix)", async () => {
 test("prefix: combined with overrides", async () => {
   const config: PermissionConfig = {
     overrides: {
-      minimal: ["flutter doctor"]
+      minimal: ["flutter doctor"],
     },
-    prefixMappings: [
-      { from: "fvm flutter", to: "flutter" }
-    ]
+    prefixMappings: [{ from: "fvm flutter", to: "flutter" }],
   };
 
   // fvm flutter doctor → flutter doctor → matches override → minimal
@@ -1260,8 +1251,8 @@ test("config: null/undefined patterns handled", async () => {
     overrides: {
       minimal: undefined as any,
       medium: null as any,
-      high: []
-    }
+      high: [],
+    },
   };
 
   // Should not throw, should use built-in classification
@@ -1272,11 +1263,9 @@ test("config: null/undefined patterns handled", async () => {
 test("config: case insensitivity", async () => {
   const config: PermissionConfig = {
     overrides: {
-      minimal: ["TMUX list-*"]
+      minimal: ["TMUX list-*"],
     },
-    prefixMappings: [
-      { from: "FVM FLUTTER", to: "flutter" }
-    ]
+    prefixMappings: [{ from: "FVM FLUTTER", to: "flutter" }],
   };
 
   const result1 = classifyCommand("tmux list-sessions", config);
@@ -1295,8 +1284,8 @@ test("security: wildcard pattern doesn't bypass dangerous detection", async () =
   // because dangerous commands are caught BEFORE override check
   const config: PermissionConfig = {
     overrides: {
-      minimal: ["sudo *"]  // Attempting to whitelist sudo
-    }
+      minimal: ["sudo *"], // Attempting to whitelist sudo
+    },
   };
 
   // sudo should still be dangerous due to built-in detection
@@ -1309,8 +1298,8 @@ test("security: wildcard pattern doesn't bypass dangerous detection", async () =
 test("security: prefix mapping to dangerous command", async () => {
   const config: PermissionConfig = {
     prefixMappings: [
-      { from: "safe", to: "rm -rf" }  // Dangerous mapping
-    ]
+      { from: "safe", to: "rm -rf" }, // Dangerous mapping
+    ],
   };
 
   // "safe /" becomes "rm -rf /" which should be classified correctly
@@ -1323,11 +1312,9 @@ test("security: override consistency with prefix mapping", async () => {
   // Override should work on NORMALIZED command, not original
   const config: PermissionConfig = {
     overrides: {
-      minimal: ["flutter doctor"]
+      minimal: ["flutter doctor"],
     },
-    prefixMappings: [
-      { from: "fvm flutter", to: "flutter" }
-    ]
+    prefixMappings: [{ from: "fvm flutter", to: "flutter" }],
   };
 
   // "fvm flutter doctor" -> normalized to "flutter doctor" -> matches override
@@ -1339,13 +1326,9 @@ test("security: invalid config entries are handled gracefully", async () => {
   // Test that invalid entries don't cause crashes
   const config: PermissionConfig = {
     overrides: {
-      minimal: [123 as any, null as any, "ls"]
+      minimal: [123 as any, null as any, "ls"],
     },
-    prefixMappings: [
-      null as any,
-      { from: "", to: "test" },
-      { from: "fvm flutter", to: "flutter" }
-    ]
+    prefixMappings: [null as any, { from: "", to: "test" }, { from: "fvm flutter", to: "flutter" }],
   };
 
   // Should not throw, valid entries still work
@@ -1362,9 +1345,7 @@ test("security: invalid config entries are handled gracefully", async () => {
 
 test("prefix: handles tabs and multiple spaces", async () => {
   const config: PermissionConfig = {
-    prefixMappings: [
-      { from: "fvm flutter", to: "flutter" }
-    ]
+    prefixMappings: [{ from: "fvm flutter", to: "flutter" }],
   };
 
   // Multiple spaces after prefix
@@ -1374,9 +1355,7 @@ test("prefix: handles tabs and multiple spaces", async () => {
 
 test("prefix: partial match doesn't trigger", async () => {
   const config: PermissionConfig = {
-    prefixMappings: [
-      { from: "fvm", to: "flutter" }
-    ]
+    prefixMappings: [{ from: "fvm", to: "flutter" }],
   };
 
   // "fvmx" should NOT match "fvm" prefix
@@ -1391,8 +1370,8 @@ test("prefix: partial match doesn't trigger", async () => {
 test("override: question mark wildcard", async () => {
   const config: PermissionConfig = {
     overrides: {
-      minimal: ["l?"]  // matches ls, la, ll, etc.
-    }
+      minimal: ["l?"], // matches ls, la, ll, etc.
+    },
   };
 
   const result1 = classifyCommand("ls", config);
@@ -1405,8 +1384,8 @@ test("override: question mark wildcard", async () => {
 test("override: special regex chars in pattern", async () => {
   const config: PermissionConfig = {
     overrides: {
-      minimal: ["test.file", "path/to/file", "cmd [arg]"]
-    }
+      minimal: ["test.file", "path/to/file", "cmd [arg]"],
+    },
   };
 
   // Dots, slashes, brackets should be treated literally
@@ -1421,8 +1400,8 @@ test("override: empty pattern array", async () => {
   const config: PermissionConfig = {
     overrides: {
       minimal: [],
-      medium: []
-    }
+      medium: [],
+    },
   };
 
   // Should fall through to built-in classification
@@ -1446,14 +1425,21 @@ test("security: command injection and shell expansion never remain minimal", asy
     const result = classifyCommand(command);
     assert(result.level !== "minimal", `Unsafe command was classified minimal: ${command}`);
   }
-  assertEqual(classifyCommand("ls; rm -rf /").dangerous, true, "dangerous command in a chain must remain dangerous");
+  assertEqual(
+    classifyCommand("ls; rm -rf /").dangerous,
+    true,
+    "dangerous command in a chain must remain dangerous",
+  );
 });
 
 test("security: shell operators and expansions are fail-closed", async () => {
   const inputs = ["ls | unknown-tool", "echo ${X:-$(id)}", "echo hi > /tmp/output"];
   for (const input of inputs) {
     const result = classifyCommand(input);
-    assert(result.level === "high" || result.level === "low", `Unexpectedly permissive classification: ${input}`);
+    assert(
+      result.level === "high" || result.level === "low",
+      `Unexpectedly permissive classification: ${input}`,
+    );
   }
 });
 
@@ -1467,15 +1453,29 @@ test("permission modes: levels and ask/block behavior", async () => {
   }
   const high = createInitialState();
   high.currentLevel = "high";
-  assertEqual(await handleBashToolCall(high, "git push origin main", nonInteractive), undefined, "high allows non-dangerous push");
+  assertEqual(
+    await handleBashToolCall(high, "git push origin main", nonInteractive),
+    undefined,
+    "high allows non-dangerous push",
+  );
 
   const askState = createInitialState();
-  const askCtx = { hasUI: true, ui: { select: async () => "Allow once", notify: () => {}, setStatus: () => {} } };
-  assertEqual(await handleBashToolCall(askState, "npm test", askCtx), undefined, "ask mode can allow once");
+  const askCtx = {
+    hasUI: true,
+    ui: { select: async () => "Allow once", notify: () => {}, setStatus: () => {} },
+  };
+  assertEqual(
+    await handleBashToolCall(askState, "npm test", askCtx),
+    undefined,
+    "ask mode can allow once",
+  );
 
   const blockState = createInitialState();
   blockState.permissionMode = "block";
-  const blockCtx = { hasUI: true, ui: { select: async () => "Allow once", notify: () => {}, setStatus: () => {} } };
+  const blockCtx = {
+    hasUI: true,
+    ui: { select: async () => "Allow once", notify: () => {}, setStatus: () => {} },
+  };
   const blocked = await handleBashToolCall(blockState, "npm test", blockCtx);
   assert(blocked?.block === true, "block mode must not prompt or allow");
 });
@@ -1483,9 +1483,17 @@ test("permission modes: levels and ask/block behavior", async () => {
 test("permission modes: write boundary is low", async () => {
   const state = createInitialState();
   const ctx = { hasUI: false, ui: { notify: () => {} } };
-  assert((await handleWriteToolCall({ state, toolName: "write", filePath: "file.txt", ctx }))?.block === true, "minimal blocks writes");
+  assert(
+    (await handleWriteToolCall({ state, toolName: "write", filePath: "file.txt", ctx }))?.block ===
+      true,
+    "minimal blocks writes",
+  );
   state.currentLevel = "low";
-  assertEqual(await handleWriteToolCall({ state, toolName: "write", filePath: "file.txt", ctx }), undefined, "low allows writes");
+  assertEqual(
+    await handleWriteToolCall({ state, toolName: "write", filePath: "file.txt", ctx }),
+    undefined,
+    "low allows writes",
+  );
 });
 
 // ============================================================================

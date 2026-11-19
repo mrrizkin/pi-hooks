@@ -10,7 +10,10 @@ import { TokenRateTracker, formatTokenRate } from "./token-rate-core.js";
 
 type StatusContext = {
   hasUI: boolean;
-  ui: { theme: { fg(color: string, text: string): string }; setStatus: (key: string, text?: string) => void };
+  ui: {
+    theme: { fg(color: string, text: string): string };
+    setStatus: (key: string, text?: string) => void;
+  };
 };
 
 export default function (pi: ExtensionAPI) {
@@ -25,7 +28,10 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.setStatus(statusKey, theme.fg("dim", "TPS: --"));
       return;
     }
-    ctx.ui.setStatus(statusKey, theme.fg("dim", "TPS: ") + theme.fg("accent", formatTokenRate(tps)));
+    ctx.ui.setStatus(
+      statusKey,
+      theme.fg("dim", "TPS: ") + theme.fg("accent", formatTokenRate(tps)),
+    );
   };
 
   const reset = (ctx: StatusContext) => {

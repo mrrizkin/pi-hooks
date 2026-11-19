@@ -25,7 +25,10 @@
     "test:token-rate": "pnpm -C token-rate test",
     "lint": "biome lint",
     "check:sync": "tsx scripts/check-sync.ts",
-    "validate": "pnpm typecheck && pnpm lint && pnpm check:sync && pnpm test && pnpm smoke-import"
+    "validate": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm check:sync && pnpm test && pnpm smoke-import",
+    "sync:ui": "tsx scripts/sync-ui.ts",
+    "format": "biome format --write",
+    "format:check": "biome format"
   },
   "dependencies": {
     "shell-quote": "^1.8.3",

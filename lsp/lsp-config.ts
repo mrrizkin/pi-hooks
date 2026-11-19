@@ -15,8 +15,14 @@ export function defaultGlobalLSPConfigPath(): string {
 
 const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const GLOBAL_FIELDS = new Set([
-  "command", "args", "extensions", "rootMarkers", "languageIds",
-  "initializationOptions", "diagnosticsWaitMs", "disabled",
+  "command",
+  "args",
+  "extensions",
+  "rootMarkers",
+  "languageIds",
+  "initializationOptions",
+  "diagnosticsWaitMs",
+  "disabled",
 ]);
 const PROJECT_FIELDS = new Set(["diagnosticsWaitMs", "disabled"]);
 
@@ -101,12 +107,19 @@ function readConfig(filePath: string, warnings: LSPConfigWarning[]): JsonObject 
     if (!isObject(parsed)) throw new Error("top level must be an object");
     return parsed;
   } catch (error) {
-    warnings.push({ path: filePath, message: `Ignored malformed config: ${error instanceof Error ? error.message : String(error)}` });
+    warnings.push({
+      path: filePath,
+      message: `Ignored malformed config: ${error instanceof Error ? error.message : String(error)}`,
+    });
     return undefined;
   }
 }
 
-function serverEntries(config: JsonObject, filePath: string, warnings: LSPConfigWarning[]): Array<[string, JsonObject]> {
+function serverEntries(
+  config: JsonObject,
+  filePath: string,
+  warnings: LSPConfigWarning[],
+): Array<[string, JsonObject]> {
   for (const key of Object.keys(config)) {
     if (FORBIDDEN_KEYS.has(key)) {
       warnings.push({ path: filePath, message: `Ignored forbidden key: ${key}` });
@@ -127,7 +140,11 @@ function serverEntries(config: JsonObject, filePath: string, warnings: LSPConfig
     if (FORBIDDEN_KEYS.has(id)) {
       warnings.push({ path: filePath, server: id, message: `Ignored forbidden server id: ${id}` });
     } else if (!isObject(value)) {
-      warnings.push({ path: filePath, server: id, message: "Ignored server config: expected an object" });
+      warnings.push({
+        path: filePath,
+        server: id,
+        message: "Ignored server config: expected an object",
+      });
     } else {
       result.push([id, value]);
     }
@@ -150,10 +167,12 @@ function extensionArray(value: unknown): string[] | undefined {
 export function isValidLSPCommand(command: string): boolean {
   if (!command || command.includes("\0")) return false;
   if (path.isAbsolute(command)) return true;
-  return command.trim() === command
-    && !/\s/.test(command)
-    && !command.includes("/")
-    && !command.includes("\\");
+  return (
+    command.trim() === command &&
+    !/\s/.test(command) &&
+    !command.includes("/") &&
+    !command.includes("\\")
+  );
 }
 
 export function clampDiagnosticsWaitMs(value: number): number {
@@ -164,30 +183,45 @@ function languageIds(value: unknown): Record<string, string> | undefined {
   if (!isObject(value)) return undefined;
   const result = Object.create(null) as Record<string, string>;
   for (const [extension, id] of ownEntries(value)) {
-    if (FORBIDDEN_KEYS.has(extension) || !extension.startsWith(".") || typeof id !== "string" || id.length === 0) return undefined;
+    if (
+      FORBIDDEN_KEYS.has(extension) ||
+      !extension.startsWith(".") ||
+      typeof id !== "string" ||
+      id.length === 0
+    )
+      return undefined;
     result[extension.toLowerCase()] = id;
   }
   return result;
 }
 
-function copyDefinition(definition: LSPServerDefinition, builtin: boolean): ResolvedLSPServerConfig {
+function copyDefinition(
+  definition: LSPServerDefinition,
+  builtin: boolean,
+): ResolvedLSPServerConfig {
   // Keep compatibility with extension consumers that append legacy builtin-like
   // entries containing only id/extensions/findRoot/spawn to LSP_SERVERS.
-  const legacy = definition as LSPServerDefinition & Partial<Record<"command" | "args" | "rootMarkers" | "languageIds" | "diagnosticsWaitMs", unknown>>;
+  const legacy = definition as LSPServerDefinition &
+    Partial<
+      Record<"command" | "args" | "rootMarkers" | "languageIds" | "diagnosticsWaitMs", unknown>
+    >;
   const extensions = Array.isArray(legacy.extensions) ? legacy.extensions : [];
   return {
     ...definition,
     command: typeof legacy.command === "string" ? legacy.command : definition.id,
-    args: Array.isArray(legacy.args) ? [...legacy.args as string[]] : [],
+    args: Array.isArray(legacy.args) ? [...(legacy.args as string[])] : [],
     extensions: [...extensions],
-    rootMarkers: Array.isArray(legacy.rootMarkers) ? [...legacy.rootMarkers as string[]] : [],
-    languageIds: legacy.languageIds && typeof legacy.languageIds === "object"
-      ? { ...legacy.languageIds as Record<string, string> }
-      : {},
+    rootMarkers: Array.isArray(legacy.rootMarkers) ? [...(legacy.rootMarkers as string[])] : [],
+    languageIds:
+      legacy.languageIds && typeof legacy.languageIds === "object"
+        ? { ...(legacy.languageIds as Record<string, string>) }
+        : {},
     initializationOptions: definition.initializationOptions
-      ? safeClone(definition.initializationOptions) as Record<string, unknown>
+      ? (safeClone(definition.initializationOptions) as Record<string, unknown>)
       : undefined,
-    diagnosticsWaitMs: clampDiagnosticsWaitMs(typeof legacy.diagnosticsWaitMs === "number" ? legacy.diagnosticsWaitMs : 3000),
+    diagnosticsWaitMs: clampDiagnosticsWaitMs(
+      typeof legacy.diagnosticsWaitMs === "number" ? legacy.diagnosticsWaitMs : 3000,
+    ),
     disabled: definition.disabled === true,
     globalOverrides: new Set(),
     builtin,
@@ -203,7 +237,11 @@ function applyGlobalEntry(
 ): ResolvedLSPServerConfig | undefined {
   for (const key of Object.keys(entry)) {
     if (FORBIDDEN_KEYS.has(key) || !GLOBAL_FIELDS.has(key)) {
-      warnings.push({ path: filePath, server: id, message: `Ignored unknown or forbidden field: ${key}` });
+      warnings.push({
+        path: filePath,
+        server: id,
+        message: `Ignored unknown or forbidden field: ${key}`,
+      });
     }
   }
 
@@ -211,27 +249,47 @@ function applyGlobalEntry(
   const command = entry.command;
   const extensions = entry.extensions;
   const rootMarkers = entry.rootMarkers;
-  if (isNew && (typeof command !== "string" || !isValidLSPCommand(command)
-    || !extensionArray(extensions) || !stringArray(rootMarkers, true))) {
-    warnings.push({ path: filePath, server: id, message: "Ignored new server: command, nonempty extensions, and nonempty rootMarkers are required" });
+  if (
+    isNew &&
+    (typeof command !== "string" ||
+      !isValidLSPCommand(command) ||
+      !extensionArray(extensions) ||
+      !stringArray(rootMarkers, true))
+  ) {
+    warnings.push({
+      path: filePath,
+      server: id,
+      message:
+        "Ignored new server: command, nonempty extensions, and nonempty rootMarkers are required",
+    });
     return undefined;
   }
 
   const next = existing
-    ? { ...copyDefinition(existing, existing.builtin), globalOverrides: new Set(existing.globalOverrides) }
-    : copyDefinition({
-      id,
-      command: command as string,
-      args: [],
-      extensions: extensionArray(extensions)!,
-      rootMarkers: stringArray(rootMarkers, true)!,
-      languageIds: {},
-      diagnosticsWaitMs: 3000,
-    }, false);
+    ? {
+        ...copyDefinition(existing, existing.builtin),
+        globalOverrides: new Set(existing.globalOverrides),
+      }
+    : copyDefinition(
+        {
+          id,
+          command: command as string,
+          args: [],
+          extensions: extensionArray(extensions)!,
+          rootMarkers: stringArray(rootMarkers, true)!,
+          languageIds: {},
+          diagnosticsWaitMs: 3000,
+        },
+        false,
+      );
   const overrides = new Set(next.globalOverrides);
 
   const invalid = (field: string, expected: string) => {
-    warnings.push({ path: filePath, server: id, message: `Ignored invalid ${field}; expected ${expected}` });
+    warnings.push({
+      path: filePath,
+      server: id,
+      message: `Ignored invalid ${field}; expected ${expected}`,
+    });
   };
 
   for (const field of GLOBAL_FIELDS) {
@@ -239,37 +297,54 @@ function applyGlobalEntry(
     const value = entry[field];
     switch (field) {
       case "command":
-        if (typeof value === "string" && isValidLSPCommand(value)) { next.command = value; overrides.add(field); }
-        else invalid(field, "a bare executable name or absolute path");
+        if (typeof value === "string" && isValidLSPCommand(value)) {
+          next.command = value;
+          overrides.add(field);
+        } else invalid(field, "a bare executable name or absolute path");
         break;
       case "args": {
         const parsed = stringArray(value, false);
-        if (parsed) { next.args = parsed; overrides.add(field); } else invalid(field, "an array of strings");
+        if (parsed) {
+          next.args = parsed;
+          overrides.add(field);
+        } else invalid(field, "an array of strings");
         break;
       }
       case "extensions": {
         const parsed = extensionArray(value);
-        if (parsed) { next.extensions = parsed; overrides.add(field); } else invalid(field, "a nonempty array of dot-prefixed extensions");
+        if (parsed) {
+          next.extensions = parsed;
+          overrides.add(field);
+        } else invalid(field, "a nonempty array of dot-prefixed extensions");
         break;
       }
       case "rootMarkers": {
         const parsed = stringArray(value, true);
-        if (parsed) { next.rootMarkers = parsed; overrides.add(field); } else invalid(field, "a nonempty array of strings");
+        if (parsed) {
+          next.rootMarkers = parsed;
+          overrides.add(field);
+        } else invalid(field, "a nonempty array of strings");
         break;
       }
       case "languageIds": {
         const parsed = languageIds(value);
-        if (parsed) { next.languageIds = parsed; overrides.add(field); } else invalid(field, "an extension-to-language-id object");
+        if (parsed) {
+          next.languageIds = parsed;
+          overrides.add(field);
+        } else invalid(field, "an extension-to-language-id object");
         break;
       }
       case "initializationOptions": {
         const parsed = safeClone(value);
-        if (isObject(parsed)) { next.initializationOptions = parsed; overrides.add(field); }
-        else invalid(field, "an object without forbidden keys");
+        if (isObject(parsed)) {
+          next.initializationOptions = parsed;
+          overrides.add(field);
+        } else invalid(field, "an object without forbidden keys");
         break;
       }
       case "diagnosticsWaitMs":
-        if (typeof value === "number" && Number.isFinite(value)) next.diagnosticsWaitMs = clampDiagnosticsWaitMs(value);
+        if (typeof value === "number" && Number.isFinite(value))
+          next.diagnosticsWaitMs = clampDiagnosticsWaitMs(value);
         else invalid(field, "a finite number");
         break;
       case "disabled":
@@ -285,7 +360,8 @@ function applyGlobalEntry(
 export function resolveLSPConfig(options: ResolveLSPConfigOptions): LSPConfigResult {
   const warnings: LSPConfigWarning[] = [];
   const globalPath = options.globalConfigPath ?? defaultGlobalLSPConfigPath();
-  const projectPath = options.projectConfigPath ?? path.join(options.cwd, options.configDirName ?? ".pi", "lsp.json");
+  const projectPath =
+    options.projectConfigPath ?? path.join(options.cwd, options.configDirName ?? ".pi", "lsp.json");
   const resolved = new Map<string, ResolvedLSPServerConfig>();
 
   for (const builtin of options.builtins) {
@@ -314,23 +390,43 @@ export function resolveLSPConfig(options: ResolveLSPConfigOptions): LSPConfigRes
     for (const [id, entry] of serverEntries(project, projectPath, warnings)) {
       const server = resolved.get(id);
       if (!server) {
-        warnings.push({ path: projectPath, server: id, message: "Ignored project server: project config cannot define servers" });
+        warnings.push({
+          path: projectPath,
+          server: id,
+          message: "Ignored project server: project config cannot define servers",
+        });
         continue;
       }
       for (const key of Object.keys(entry)) {
         if (FORBIDDEN_KEYS.has(key) || !PROJECT_FIELDS.has(key)) {
-          warnings.push({ path: projectPath, server: id, message: `Ignored privileged project field: ${key}` });
+          warnings.push({
+            path: projectPath,
+            server: id,
+            message: `Ignored privileged project field: ${key}`,
+          });
         }
       }
       if (Object.hasOwn(entry, "disabled")) {
         if (entry.disabled === true) server.disabled = true;
-        else warnings.push({ path: projectPath, server: id, message: "Ignored disabled value; project config may only set true" });
+        else
+          warnings.push({
+            path: projectPath,
+            server: id,
+            message: "Ignored disabled value; project config may only set true",
+          });
       }
       if (Object.hasOwn(entry, "diagnosticsWaitMs")) {
-        if (typeof entry.diagnosticsWaitMs === "number" && Number.isFinite(entry.diagnosticsWaitMs)) {
+        if (
+          typeof entry.diagnosticsWaitMs === "number" &&
+          Number.isFinite(entry.diagnosticsWaitMs)
+        ) {
           server.diagnosticsWaitMs = clampDiagnosticsWaitMs(entry.diagnosticsWaitMs);
         } else {
-          warnings.push({ path: projectPath, server: id, message: "Ignored invalid diagnosticsWaitMs; expected a finite number" });
+          warnings.push({
+            path: projectPath,
+            server: id,
+            message: "Ignored invalid diagnosticsWaitMs; expected a finite number",
+          });
         }
       }
     }
