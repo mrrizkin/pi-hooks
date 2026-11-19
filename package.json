@@ -5,7 +5,11 @@
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@12.4.2",
-  "keywords": ["pi-package", "pi", "pi-coding-agent"],
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent"
+  ],
   "scripts": {
     "install:all": "pnpm install",
     "typecheck": "pnpm -r --filter=!pi-hooks typecheck",
@@ -15,14 +19,20 @@
     "typecheck:ralph": "pnpm -C ralph-loop run typecheck",
     "typecheck:repeat": "pnpm -C repeat run typecheck",
     "typecheck:token-rate": "pnpm -C token-rate run typecheck",
-    "test": "pnpm -C checkpoint test && pnpm -C permission test && pnpm -C lsp run test:all && pnpm -C ralph-loop test",
-    "smoke-import": "tsx scripts/smoke-import.ts"
+    "test": "pnpm -C checkpoint test && pnpm -C permission test && pnpm -C lsp run test:all && pnpm -C ralph-loop test && pnpm -C repeat test && pnpm -C token-rate test",
+    "smoke-import": "tsx scripts/smoke-import.ts",
+    "test:repeat": "pnpm -C repeat test",
+    "test:token-rate": "pnpm -C token-rate test",
+    "lint": "biome lint",
+    "check:sync": "tsx scripts/check-sync.ts",
+    "validate": "pnpm typecheck && pnpm lint && pnpm check:sync && pnpm test && pnpm smoke-import"
   },
   "dependencies": {
     "shell-quote": "^1.8.3",
     "vscode-languageserver-protocol": "^3.18.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.6.8",
     "@types/node": "^24.10.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"

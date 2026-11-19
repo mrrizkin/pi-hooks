@@ -254,6 +254,21 @@ Commands containing these patterns require HIGH permission:
 - Process substitution: `<(cmd)`, `>(cmd)`
 - Dangerous expansions: `${VAR:-$(cmd)}` (nested command substitution)
 
+## Limitations (not a sandbox)
+
+This extension is a guardrail for an interactive agent, not a security sandbox:
+
+- Classification is heuristic. It parses pipelines, command substitution, and
+  known wrapper commands, but aliases, project-local scripts, and unknown
+  binaries can still perform writes or execute arbitrary code.
+- "Minimal" blocks known write commands; it does not audit what a permitted
+  command actually does to the filesystem.
+- Environment variables to `env`/`exec` and `bash -c` payloads are inspected on
+  a best-effort basis only.
+
+If you need a hard boundary, run pi inside a container or a dedicated OS user
+with restricted permissions.
+
 ## Installation
 
 Install the package and enable extensions:

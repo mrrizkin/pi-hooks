@@ -58,7 +58,6 @@ import {
   loadPermissionConfig,
   savePermissionConfig,
   invalidateConfigCache,
-  type PermissionConfig,
 } from "./permission-core.js";
 import { numberedSelect } from "./ui.js";
 
@@ -204,7 +203,7 @@ function setMode(
   state: PermissionState,
   mode: PermissionMode,
   saveGlobally: boolean,
-  ctx: any
+  _ctx: any
 ): void {
   state.permissionMode = mode;
   state.isModeSessionOnly = !saveGlobally;
@@ -219,7 +218,7 @@ function setMode(
 
 /** Handle /permission config subcommand */
 async function handleConfigSubcommand(
-  state: PermissionState,
+  _state: PermissionState,
   args: string,
   ctx: any
 ): Promise<void> {
@@ -528,7 +527,7 @@ export async function handleWriteToolCall(
   
   if (state.currentLevel === "bypassed") return undefined;
 
-  if (LEVEL_INDEX[state.currentLevel] >= LEVEL_INDEX["low"]) return undefined;
+  if (LEVEL_INDEX[state.currentLevel] >= LEVEL_INDEX.low) return undefined;
 
   const action = toolName === "write" ? "Write" : "Edit";
   const message = `Requires Low: ${action} ${filePath}`;

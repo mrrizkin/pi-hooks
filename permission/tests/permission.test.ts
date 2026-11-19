@@ -4,8 +4,8 @@
  * Run with: npm test
  */
 
-import { classifyCommand, type Classification, type PermissionConfig } from "../permission-core.js";
-import { createInitialState, handleBashToolCall, handleWriteToolCall, type PermissionState } from "../permission.ts";
+import { classifyCommand, type PermissionConfig } from "../permission-core.js";
+import { createInitialState, handleBashToolCall, handleWriteToolCall } from "../permission.js";
 
 // ============================================================================
 // Test runner
@@ -1250,8 +1250,6 @@ test("prefix: combined with overrides", async () => {
 // ============================================================================
 
 test("config: empty config doesn't break classification", async () => {
-  const config: PermissionConfig = {};
-
   assertLevel("ls", "minimal");
   assertLevel("npm install", "medium");
   assertLevel("git push", "high");

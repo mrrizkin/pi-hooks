@@ -24,7 +24,7 @@ export async function numberedSelect(
   // Keep compatibility with lightweight test hosts and older pi contexts that
   // expose select() but not custom(). The current pi API takes the numbered path.
   if (!ctx.ui.custom) return ctx.ui.select ? ctx.ui.select(title, options).then((value) => value ?? null) : null;
-  return ctx.ui.custom<string | null>((tui, theme, keybindings, done) => {
+  return ctx.ui.custom<string | null>((tui, _theme, keybindings, done) => {
     let selected = 0;
     let lines: string[] = [];
     const update = () => {

@@ -173,6 +173,7 @@ const tests: Array<[string, () => void | Promise<void>]> = [
     assert(narrowRender.length <= 20, "viewer output should fit its bounded viewport");
     assert(narrowRender[0].startsWith("╭") && narrowRender[narrowRender.length - 1].startsWith("╰"), "viewer should render a border");
     assert(viewer.render(80).some((line) => line.includes("auto:on")), "viewer should follow the live tail by default");
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escapes is intentional
     const visibleWidth = (line: string) => line.replace(/\x1b\[[0-9;]*m/g, "").length;
     assert(narrowRender.every((line) => visibleWidth(line) <= 20), "viewer lines should remain within narrow overlay width");
 
@@ -282,6 +283,7 @@ const tests: Array<[string, () => void | Promise<void>]> = [
     const nativeFull = nativeViewer.render(80).join("\n");
     nativeViewer.handleInput("\x0f"); // collapsed
     const nativeCollapsed = nativeViewer.render(80).join("\n");
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escapes is intentional
     const stripAnsi = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "");
     const nativeReadDefinition = getNativeToolDefinition("read", process.cwd());
     assert(typeof nativeReadDefinition?.renderCall === "function", "built-in read renderer should be resolved explicitly");
@@ -343,7 +345,7 @@ const tests: Array<[string, () => void | Promise<void>]> = [
       tool.setExpanded(false);
       return tool;
     };
-    const expected = 2 + messages.reduce((total, message) => total + makeNativeTool(message).render(80).length, 0);
+    const expected = 2 + messages.reduce((total, message) => total + (makeNativeTool(message) as unknown as { render(width: number): string[] }).render(80).length, 0);
     const actual = renderNativeIteration(
       { index: 1, details: { mode: "single", results: [{ agent: "worker", agentSource: "builtin", exitCode: 0, messages }] } },
       80,

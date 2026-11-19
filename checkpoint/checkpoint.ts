@@ -241,7 +241,7 @@ async function loadCheckpointForTarget(
     directSessionIds.push(state.currentSessionId);
   }
 
-  directSessionIds.forEach((id) => sessionIds.push(id));
+  for (const id of directSessionIds) sessionIds.push(id);
   if (header?.id && isSafeId(header.id) && !sessionIds.includes(header.id)) {
     sessionIds.push(header.id);
   }

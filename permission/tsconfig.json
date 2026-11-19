@@ -7,7 +7,12 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "lib": ["ES2022"]
+    "lib": [
+      "ES2022"
+    ]
   },
-  "include": ["*.ts"]
+  "include": [
+    "*.ts",
+    "tests/**/*.ts"
+  ]
 }

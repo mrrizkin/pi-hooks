@@ -6,78 +6,59 @@
 
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { TokenRateTracker, formatTokenRate } from "./token-rate-core.js";
+
+type StatusContext = {
+  hasUI: boolean;
+  ui: { theme: { fg(color: string, text: string): string }; setStatus: (key: string, text?: string) => void };
+};
 
 export default function (pi: ExtensionAPI) {
   const statusKey = "token-rate";
-  let totalOutputTokens = 0;
-  let totalSeconds = 0;
-  let turnStartMs: number | null = null;
-  let turnStreamEndMs: number | null = null;
+  const tracker = new TokenRateTracker();
 
-  const reset = (ctx: { hasUI: boolean; ui: { theme: any; setStatus: (key: string, text?: string) => void } }) => {
-    totalOutputTokens = 0;
-    totalSeconds = 0;
-    turnStartMs = null;
-    turnStreamEndMs = null;
+  const updateStatus = (ctx: StatusContext) => {
     if (!ctx.hasUI) return;
     const theme = ctx.ui.theme;
-    ctx.ui.setStatus(statusKey, theme.fg("dim", "TPS: --"));
-  };
-
-  const updateStatus = (ctx: { hasUI: boolean; ui: { theme: any; setStatus: (key: string, text?: string) => void } }) => {
-    if (!ctx.hasUI) return;
-    const theme = ctx.ui.theme;
-    if (totalSeconds <= 0 || totalOutputTokens <= 0) {
+    const { tps } = tracker.snapshot();
+    if (tps === null) {
       ctx.ui.setStatus(statusKey, theme.fg("dim", "TPS: --"));
       return;
     }
-    const tps = totalOutputTokens / totalSeconds;
-    const value = Number.isFinite(tps) ? tps.toFixed(1) : "--";
-    const text = theme.fg("dim", "TPS: ") + theme.fg("accent", `${value} tok/s`);
-    ctx.ui.setStatus(statusKey, text);
+    ctx.ui.setStatus(statusKey, theme.fg("dim", "TPS: ") + theme.fg("accent", formatTokenRate(tps)));
+  };
+
+  const reset = (ctx: StatusContext) => {
+    tracker.reset();
+    updateStatus(ctx);
   };
 
   pi.on("session_start", async (_event, ctx) => {
     reset(ctx);
   });
 
-  (pi as any).on("session_switch", async (_event: any, ctx: { hasUI: boolean; ui: { theme: any; setStatus: (key: string, text?: string) => void } }) => {
+  (pi as any).on("session_switch", async (_event: any, ctx: StatusContext) => {
     reset(ctx);
   });
 
   pi.on("turn_start", async (event, ctx) => {
-    turnStartMs = event.timestamp ?? Date.now();
-    turnStreamEndMs = null;
+    tracker.startTurn(event.timestamp ?? Date.now());
     updateStatus(ctx);
   });
 
   pi.on("tool_call", async (_event, _ctx) => {
-    if (turnStartMs !== null && turnStreamEndMs === null) {
-      turnStreamEndMs = Date.now();
-    }
+    tracker.markStreamEnd(Date.now());
   });
 
   pi.on("turn_end", async (event, ctx) => {
     const message = event.message as AssistantMessage | undefined;
     if (!message || message.role !== "assistant") {
-      turnStartMs = null;
-      turnStreamEndMs = null;
+      tracker.endTurn(0, (event as any).timestamp ?? Date.now());
       updateStatus(ctx);
       return;
     }
 
-    const endMs = turnStreamEndMs ?? (event as any).timestamp ?? Date.now();
-    const startMs = turnStartMs ?? endMs;
-    const elapsedSeconds = Math.max(0.001, (endMs - startMs) / 1000);
-
-    const outputTokens = message.usage?.output ?? 0;
-    if (outputTokens > 0) {
-      totalOutputTokens += outputTokens;
-      totalSeconds += elapsedSeconds;
-    }
-
-    turnStartMs = null;
-    turnStreamEndMs = null;
+    tracker.endTurn(message.usage?.output ?? 0, (event as any).timestamp ?? Date.now());
     updateStatus(ctx);
   });
 }

@@ -9,6 +9,22 @@ Repeat past tool calls (bash/edit/write) from the current branch.
 - Write entries open a temp editor (if `$EDITOR` is set) and apply only when you save.
 - Edit entries can repeat the edit (may fail) or open `$EDITOR` at the first changed line; repeat uses a temp editor and applies on save.
 
+## File Structure
+
+```
+repeat/
+  repeat.ts       # Command handler + TUI picker
+  repeat-core.ts  # Pure helpers (collection, editor invocation, edits)
+  tests/
+    repeat.test.ts
+```
+
+## Testing
+
+```bash
+pnpm -C repeat test
+```
+
 ## Notes
 
 - Uses `$VISUAL` or `$EDITOR` when available.

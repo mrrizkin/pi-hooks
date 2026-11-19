@@ -235,7 +235,7 @@ function applyGlobalEntry(
   };
 
   for (const field of GLOBAL_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(entry, field)) continue;
+    if (!Object.hasOwn(entry, field)) continue;
     const value = entry[field];
     switch (field) {
       case "command":
@@ -322,11 +322,11 @@ export function resolveLSPConfig(options: ResolveLSPConfigOptions): LSPConfigRes
           warnings.push({ path: projectPath, server: id, message: `Ignored privileged project field: ${key}` });
         }
       }
-      if (Object.prototype.hasOwnProperty.call(entry, "disabled")) {
+      if (Object.hasOwn(entry, "disabled")) {
         if (entry.disabled === true) server.disabled = true;
         else warnings.push({ path: projectPath, server: id, message: "Ignored disabled value; project config may only set true" });
       }
-      if (Object.prototype.hasOwnProperty.call(entry, "diagnosticsWaitMs")) {
+      if (Object.hasOwn(entry, "diagnosticsWaitMs")) {
         if (typeof entry.diagnosticsWaitMs === "number" && Number.isFinite(entry.diagnosticsWaitMs)) {
           server.diagnosticsWaitMs = clampDiagnosticsWaitMs(entry.diagnosticsWaitMs);
         } else {

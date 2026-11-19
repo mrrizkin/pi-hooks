@@ -131,20 +131,46 @@ Shows the average output tokens per second (TPS) in the footer status line.
 
 When switching from the upstream/npm package, remove `npm:pi-hooks` first and install this fork so both packages are not loaded at the same time.
 
+## Security notes
+
+These extensions are conveniences, not a security boundary:
+
+- **`permission`** classifies shell commands heuristically (including pipelines,
+  substitutions, and shell tricks) but it is **not a sandbox**. Aliases, wrapper
+  scripts, and commands it has never seen can still slip through. Use containers
+  or OS-level sandboxing when you need a real boundary.
+- **`checkpoint`** snapshots tracked and untracked files into Git objects under
+  `refs/pi-checkpoints/`. Files matched by `.gitignore` are skipped, but ignored
+  paths are not the same as *secret* paths: a committed `.env` or credential file
+  will be captured. Keep secrets ignored, and remember the refs live in `.git`
+  (they are not pushed by a normal `git push`, but `git push --mirror` or a
+  repository archive will include them).
+- **`ralph-loop`** spawns `pi` subprocesses with the permissions of the current
+  user. A loop condition command is executed through the shell.
+
 ## Testing
 
 From the repository root:
 
 ```bash
 pnpm install
-pnpm typecheck
+pnpm typecheck   # includes tests
+pnpm lint
+pnpm check:sync
 pnpm test
 pnpm smoke-import
+pnpm validate    # all of the above
 ```
 
-The repo is a pnpm workspace: one lockfile and one shared `node_modules` (deps are hard-linked from pnpm's global store, so the 6 sub-packages no longer each download their own copy of `typescript`, `esbuild`, `@earendil-works/*`, etc.).
+The repo is a pnpm workspace: one lockfile and one shared `node_modules` (deps are hard-linked from pnpm's global store, so the 6 sub-packages no longer each download their own copy of `typescript`, `esbuild`, `@earendil-works/*`, etc.). CI installs with `pnpm install --frozen-lockfile`.
 
-`pnpm test` runs checkpoint, permission, LSP unit/integration tests, and Ralph-loop lifecycle tests. Integration tests skip language-specific checks when their server binary is not installed.
+`pnpm test` runs checkpoint, permission, LSP unit/integration tests, Ralph-loop lifecycle tests, and the repeat/token-rate helper tests. Integration tests skip language-specific checks when their server binary is not installed.
+
+`pnpm check:sync` guards invariants that are easy to break in this two-target
+repo (git install + standalone npm packages): root runtime dependencies must
+match each package's dependencies, the shared `ui.ts` copies must stay
+byte-identical, and every package must have a real test script wired into the
+root `test` script.
 
 ## License
 

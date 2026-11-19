@@ -52,6 +52,21 @@ npm test
 
 Checkpoints are stored as Git refs under `refs/pi-checkpoints/` and persist across sessions.
 
+## Secrets and sensitive files
+
+Snapshots are stored as Git objects under `refs/pi-checkpoints/`. Filtering is
+based on `.gitignore` plus a list of generated directories, so it protects
+against `node_modules`/`dist`, not against secrets:
+
+- A `.env`, key file, or credential file that is **not** gitignored will be
+  captured in the checkpoint commit.
+- The refs are local to the repository and are not pushed by `git push`, but a
+  mirror push or a copy of `.git` will include them.
+- Restoring an old checkpoint can bring those captured files back.
+
+Keep secrets ignored (or use a path-level ignore) if you do not want them in
+checkpoint snapshots.
+
 ## Smart Filtering
 
 To avoid bloating snapshots with large or generated files, the extension automatically excludes:
